@@ -19,8 +19,9 @@
   code_change/3]).
 
 -define(SERVER, ?MODULE).
+-define(MAX_SPEED, 100).
 
--record(elementNode_state, {}).
+-record(elementNode_state, {parent, location, direction, speed}).
 
 %%%===================================================================
 %%% API
@@ -30,8 +31,9 @@
 -spec(start_link(ParentNode::atom(), Quarter::byte()) ->
   {ok, Pid :: pid()} | ignore | {error, Reason :: term()}).
 start_link(ParentNode, Quarter) -> io:format("Element start_link ~n ", []),
-  gen_server:start_link({global, node()}, ?MODULE, [ParentNode, Quarter], []).
-  % TODO Set speed and direction
+  gen_server:start_link(?MODULE, [ParentNode, Quarter], []).
+
+
   % TODO Update the parent node on its existence
 
 %%%===================================================================
@@ -43,9 +45,13 @@ start_link(ParentNode, Quarter) -> io:format("Element start_link ~n ", []),
 -spec(init(Args :: term()) ->
   {ok, State :: #elementNode_state{}} | {ok, State :: #elementNode_state{}, timeout() | hibernate} |
   {stop, Reason :: term()} | ignore).
-init([FatherNode, Quarter]) -> io:format("Element init ~n ", []),
-
-  {ok, #elementNode_state{}}.
+init([ParentNode, Quarter]) -> io:format("Element init: ~p ~n ", [self()]),
+  ElementPid = self(),
+  setSpeedAndDirection(Quarter), % [Location, Direction, Speed]
+  %io:format("Element test1 ~p ~n ", [[Loc, Dir, Sp]]),
+  %gen_server:cast(ParentNode, {signMeUp, ElementPid}),
+  io:format("Element test2 ~n ", []),
+  {ok, #elementNode_state{}}. % parent = ParentNode, location = Location, direction = Direction, speed = Speed
 
 %% @private
 %% @doc Handling call messages
@@ -99,3 +105,15 @@ code_change(_OldVsn, State = #elementNode_state{}, _Extra) ->
 %%%===================================================================
 %%% Internal functions
 %%%===================================================================
+setSpeedAndDirection(Quarter) -> io:format("Element setSpeedAndDirection ~p ~n ", [Quarter]),
+  case Quarter of
+    1 -> Location = [rand:uniform(1000), rand:uniform(1000)];
+    2 -> Location = [1000 + rand:uniform(1000), rand:uniform(1000)];
+    3 -> Location = [rand:uniform(1000), 1000 + rand:uniform(1000)];
+    4 -> Location = [1000 + rand:uniform(1000), 1000 + rand:uniform(1000)]
+    end,
+  io:format("Element 1111111111111111111: ~n ", []),
+  Direction = rand:uniform(360),
+  Speed = rand:uniform(?MAX_SPEED),
+
+  [Location, Direction, Speed].

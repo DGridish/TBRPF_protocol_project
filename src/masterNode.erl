@@ -19,6 +19,7 @@
   code_change/3]).
 
 -define(SERVER, ?MODULE).
+-define(NUM_OF_ELEMENTS, 16).
 
 -record(masterNode_state, {slaveNodes, slaveAreas}).
 
@@ -46,7 +47,7 @@ init([SlaveNodes, SlaveAreas]) -> io:format("Master init~n", []),
   ets:new(etsMessages,[ordered_set, public, named_table, {read_concurrency, true}, {write_concurrency, true}]),         % Create massages table
   % TODO spawn GUI
   % TODO pass parameters to slave node or use default in slaveNode? What parameters?
-  spawnSlaveNode(SlaveNodes, SlaveAreas, init),                                                                         % Spawn slave nodes
+  spawnSlaveNodes(SlaveNodes, SlaveAreas, ?NUM_OF_ELEMENTS, init),                                                      % Spawn slave nodes
   spawn_link(fun() -> manageSlaveNodes(SlaveNodes, node()) end),                                                        % Monitor slave nodes
 
   % TODO send massages between elements
@@ -107,11 +108,11 @@ code_change(_OldVsn, State = #masterNode_state{}, _Extra) ->
 %%%===================================================================
 
 % Start all the processes in the SlaveNodes list, with the appropriate areas
-spawnSlaveNode(SlaveNodes, SlaveAreas, init) -> [spawnSlaveNode(SlaveNodes, SlaveAreas, Node) || Node <- SlaveNodes];
-spawnSlaveNode(SlaveNodes, SlaveAreas, Node) -> spawn(Node, slaveNode, start_link, [SlaveNodes, SlaveAreas, node()]).
+spawnSlaveNodes(SlaveNodes, SlaveAreas, NUM_OF_ELEM, init) -> [spawnSlaveNodes(SlaveNodes, SlaveAreas, NUM_OF_ELEM, Node) || Node <- SlaveNodes];
+spawnSlaveNodes(SlaveNodes, SlaveAreas, NUM_OF_ELEM, Node) -> spawn(Node, slaveNode, start_link, [SlaveNodes, SlaveAreas, NUM_OF_ELEM, node()]).
 
 % Monitor all slave nodes
-manageSlaveNodes(SlaveNodes, MasterNode) ->
+manageSlaveNodes(SlaveNodes, MasterNode) -> io:format("Master MasterNode: ~p ~n", [MasterNode]),
   [erlang:monitor_node(Node, true) || Node <- SlaveNodes],
   manageSlaveNodesLoop(MasterNode).
 
