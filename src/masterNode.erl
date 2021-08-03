@@ -12,7 +12,7 @@
 -behaviour(gen_server).
 
 %% API
--export([start_link/2]).
+-export([start_link/2, test/0]).
 
 %% gen_server callbacks
 -export([init/1, handle_call/3, handle_cast/2, handle_info/2, terminate/2,
@@ -20,6 +20,7 @@
 
 -define(SERVER, ?MODULE).
 -define(NUM_OF_ELEMENTS, 16).
+%-define(RefreshRate, 100).
 
 -record(masterNode_state, {slaveNodes, slaveAreas}).
 
@@ -45,8 +46,13 @@ start_link(SlaveNodes, SlaveAreas) -> io:format("Master start_link~n", []),
 init([SlaveNodes, SlaveAreas]) -> io:format("Master init~n", []),
   ets:new(etsElements,[set, public, named_table]),                                                                      % Create elements table
   ets:new(etsMessages,[ordered_set, public, named_table, {read_concurrency, true}, {write_concurrency, true}]),         % Create massages table
+
   % TODO spawn GUI
+  % GuiPid = guiStateM:start_link([SlaveNodes, node()]),
+  % spawn_link(fun()-> updateETS(GuiPid) end).
+
   % TODO pass parameters to slave node or use default in slaveNode? What parameters?
+
   spawnSlaveNodes(SlaveNodes, SlaveAreas, ?NUM_OF_ELEMENTS, init),                                                      % Spawn slave nodes
   spawn_link(fun() -> manageSlaveNodes(SlaveNodes, node()) end),                                                        % Monitor slave nodes
 
@@ -73,6 +79,16 @@ handle_call(_Request, _From, State = #masterNode_state{}) ->
   {noreply, NewState :: #masterNode_state{}} |
   {noreply, NewState :: #masterNode_state{}, timeout() | hibernate} |
   {stop, Reason :: term(), NewState :: #masterNode_state{}}).
+handle_cast({addElement, SlavePid, ElementPid, Location}, State = #masterNode_state{}) ->
+  io:format("Master signMeUp !~p ~n ", [{[SlavePid, ElementPid], Location}]),
+  ets:insert(etsElements, {[SlavePid, ElementPid], Location}),   % etsElements: {[SlavePid, ElementPid],[X,Y]}  % {[<12526.105.0>,<12526.113.0>],[1916,114]
+  {noreply, State};
+
+handle_cast({deleteElement, SlavePid, ElementPid}, State = #masterNode_state{}) ->
+  ets:delete(etsElements, {[SlavePid, ElementPid]}),   % etsElements: {[SlavePid, ElementPid],[X,Y]}  % {[<12526.105.0>,<12526.113.0>],[1916,114]
+  {noreply, State};
+
+
 handle_cast(_Request, State = #masterNode_state{}) ->
   {noreply, State}.
 
@@ -109,7 +125,7 @@ code_change(_OldVsn, State = #masterNode_state{}, _Extra) ->
 
 % Start all the processes in the SlaveNodes list, with the appropriate areas
 spawnSlaveNodes(SlaveNodes, SlaveAreas, NUM_OF_ELEM, init) -> [spawnSlaveNodes(SlaveNodes, SlaveAreas, NUM_OF_ELEM, Node) || Node <- SlaveNodes];
-spawnSlaveNodes(SlaveNodes, SlaveAreas, NUM_OF_ELEM, Node) -> spawn(Node, slaveNode, start_link, [SlaveNodes, SlaveAreas, NUM_OF_ELEM, node()]).
+spawnSlaveNodes(SlaveNodes, SlaveAreas, NUM_OF_ELEM, Node) -> spawn(Node, slaveNode, start_link, [SlaveNodes, SlaveAreas, NUM_OF_ELEM, self()]).
 
 % Monitor all slave nodes
 manageSlaveNodes(SlaveNodes, MasterNode) -> io:format("Master MasterNode: ~p ~n", [MasterNode]),
@@ -122,3 +138,12 @@ manageSlaveNodesLoop(MasterNode)->
     Test -> io:format("Master manageSlaveNodesLoop: ~p ~n", [Test])
   end,
   manageSlaveNodesLoop(MasterNode).
+
+
+%updateETS(GuiPid)->
+%  receive
+%  after  1000 div ?RefreshRate -> gen_statem:cast(GuiPid, {refresh, ets:tab2list(etsElements)})
+%  end,
+%  refreshtimer(GuiPid).
+
+test() -> EtsList = ets:tab2list(etsElements), EtsList.

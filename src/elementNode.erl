@@ -19,9 +19,9 @@
   code_change/3]).
 
 -define(SERVER, ?MODULE).
--define(MAX_SPEED, 100).
-
--record(elementNode_state, {parent, location, direction, speed}).
+-define(MAX_SPEED, 100).    % m/s
+-define(updateEtsTimer, 1). % per second
+-record(elementNode_state, {elementPid, parentPid, quarter, location, direction, speed, time}).
 
 %%%===================================================================
 %%% API
@@ -30,11 +30,10 @@
 %% @doc Spawns the server and registers the local name (unique)
 -spec(start_link(ParentNode::atom(), Quarter::byte()) ->
   {ok, Pid :: pid()} | ignore | {error, Reason :: term()}).
-start_link(ParentNode, Quarter) -> io:format("Element start_link ~n ", []),
-  gen_server:start_link(?MODULE, [ParentNode, Quarter], []).
+start_link(ParentNode, Quarter) ->
+  {ok, ElementPid} = gen_server:start_link(?MODULE, [ParentNode, Quarter], []),
+  UpdateEtsTimerPid = spawn(fun()->updateEtsTimer(ElementPid) end).
 
-
-  % TODO Update the parent node on its existence
 
 %%%===================================================================
 %%% gen_server callbacks
@@ -45,13 +44,12 @@ start_link(ParentNode, Quarter) -> io:format("Element start_link ~n ", []),
 -spec(init(Args :: term()) ->
   {ok, State :: #elementNode_state{}} | {ok, State :: #elementNode_state{}, timeout() | hibernate} |
   {stop, Reason :: term()} | ignore).
-init([ParentNode, Quarter]) -> io:format("Element init: ~p ~n ", [self()]),
+init([ParentNode, Quarter]) ->
   ElementPid = self(),
-  setSpeedAndDirection(Quarter), % [Location, Direction, Speed]
-  %io:format("Element test1 ~p ~n ", [[Loc, Dir, Sp]]),
-  %gen_server:cast(ParentNode, {signMeUp, ElementPid}),
-  io:format("Element test2 ~n ", []),
-  {ok, #elementNode_state{}}. % parent = ParentNode, location = Location, direction = Direction, speed = Speed
+  [Location, Direction, Speed] = setSpeedAndDirection(Quarter),
+  gen_server:cast(ParentNode, {signMeUp, ElementPid, Location}),                                                                  % Update the parent node on its existence
+  {ok, #elementNode_state{elementPid = ElementPid, parentPid = ParentNode, quarter = Quarter,
+    location = Location, direction = Direction, speed = Speed, time = erlang:system_time(millisecond)}}.
 
 %% @private
 %% @doc Handling call messages
@@ -72,6 +70,26 @@ handle_call(_Request, _From, State = #elementNode_state{}) ->
   {noreply, NewState :: #elementNode_state{}} |
   {noreply, NewState :: #elementNode_state{}, timeout() | hibernate} |
   {stop, Reason :: term(), NewState :: #elementNode_state{}}).
+handle_cast({makeMovement}, State = #elementNode_state{}) ->
+  [NewX, NewY, NewTime] = calcMovement(State),
+  NewLocation = [NewX, NewY],
+  case checkNewLocation(NewLocation) of
+    offTheMap ->
+      gen_server:cast(State#elementNode_state.parentPid, {deleteElement, self()}),
+      gen_server:cast(self(),{deleteElement});
+    NewQuarter -> State#elementNode_state{quarter = NewQuarter, location = NewLocation, time = NewTime},
+              if
+                (NewQuarter == State#elementNode_state.quarter) ->
+                  gen_server:cast(State#elementNode_state.parentPid, {updateElement, State#elementNode_state.elementPid, NewLocation});
+                true ->
+                  gen_server:cast(State#elementNode_state.parentPid, {moveToOtherQuarter, State#elementNode_state.elementPid, NewQuarter, NewLocation})
+              end
+  end,
+  {noreply, State};
+
+handle_cast({deleteElement}, State = #elementNode_state{}) -> %TODO delete Element
+  {{stop, shutdown, State}};
+
 handle_cast(_Request, State = #elementNode_state{}) ->
   {noreply, State}.
 
@@ -105,15 +123,43 @@ code_change(_OldVsn, State = #elementNode_state{}, _Extra) ->
 %%%===================================================================
 %%% Internal functions
 %%%===================================================================
-setSpeedAndDirection(Quarter) -> io:format("Element setSpeedAndDirection ~p ~n ", [Quarter]),
+setSpeedAndDirection(Quarter) ->
   case Quarter of
     1 -> Location = [rand:uniform(1000), rand:uniform(1000)];
     2 -> Location = [1000 + rand:uniform(1000), rand:uniform(1000)];
     3 -> Location = [rand:uniform(1000), 1000 + rand:uniform(1000)];
     4 -> Location = [1000 + rand:uniform(1000), 1000 + rand:uniform(1000)]
     end,
-  io:format("Element 1111111111111111111: ~n ", []),
-  Direction = rand:uniform(360),
-  Speed = rand:uniform(?MAX_SPEED),
-
+  Direction = rand:uniform(360),    % degrees
+  Speed = rand:uniform(?MAX_SPEED), % m/s
   [Location, Direction, Speed].
+
+updateEtsTimer(ElementPid) ->
+  WaitTime = 1000 div ?updateEtsTimer,
+  receive
+    _ ->  doNothing
+  after WaitTime -> % milliseconds
+    gen_server:cast(ElementPid,{makeMovement}),
+    updateEtsTimer(ElementPid)
+  end.
+
+calcMovement(State) ->
+  [OldX, OldY] = State#elementNode_state.location,
+  Direction = State#elementNode_state.direction,
+  Speed = State#elementNode_state.speed,
+  NewTime = erlang:system_time(millisecond),
+  MovementTime = NewTime - State#elementNode_state.time,
+
+  NewX = round(OldX + math:cos(Direction * math:pi() / 180) * Speed * MovementTime),
+  NewY = round(OldY + math:sin(Direction * math:pi() / 180) * Speed * MovementTime),
+  [NewX, NewY, NewTime].
+
+checkNewLocation([X,Y]) ->
+  if
+    ((X < 0) or (X > 2000) or (Y < 0) or (Y > 2000)) -> offTheMap;
+    ((X > 0) and (X < 1000) and (Y > 0) and (Y < 1000)) -> 1;
+    ((X > 1000) and (X < 2000) and (Y > 0) and (Y < 1000)) -> 2;
+    ((X > 0) and (X < 1000) and (Y > 1000) and (Y < 2000)) -> 3;
+    ((X > 1000) and (X < 2000) and (Y > 1000) and (Y < 2000)) -> 4;
+    true -> offTheMap
+  end.
