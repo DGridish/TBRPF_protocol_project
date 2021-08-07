@@ -20,7 +20,7 @@
 
 -define(SERVER, ?MODULE).
 
--record(slaveNode_state, {mastrNode, quarter}).
+-record(slaveNode_state, {masterNode, quarter}).
 
 %%%===================================================================
 %%% API
@@ -29,7 +29,7 @@
 %% @doc Spawns the server and registers the local name (unique)
 -spec(start_link(SlaveNodes::list(), SlaveAreas::list(), NUM_OF_ELEM::byte(), MasterNode::atom()) ->
   {ok, Pid :: pid()} | ignore | {error, Reason :: term()}).
-start_link(SlaveNodes, SlaveAreas, NUM_OF_ELEM, MasterNode) -> io:format("Slave start_link ~n ", []),
+start_link(SlaveNodes, SlaveAreas, NUM_OF_ELEM, MasterNode) ->
   gen_server:start_link({global, node()}, ?MODULE, [SlaveNodes, SlaveAreas, NUM_OF_ELEM, MasterNode], []).
 
 
@@ -45,9 +45,9 @@ start_link(SlaveNodes, SlaveAreas, NUM_OF_ELEM, MasterNode) -> io:format("Slave 
 init([SlaveNodes, SlaveAreas, NUM_OF_ELEM, MasterNode]) ->
   ets:new(etsLocation, [set, public, named_table, {read_concurrency, true}, {write_concurrency, true}]),                % Create elements location table
   Quarter = findSlaveNodeQuarter(SlaveNodes, SlaveAreas, node()),                                                       % Find the quarter for which the node is responsible from SlaveAreas list
+  gen_server:cast(MasterNode, {addSlave, node(), self(), Quarter}),
   spawnElementNodes(NUM_OF_ELEM, Quarter),
-  %manageElements(self()),
-  {ok, #slaveNode_state{mastrNode = MasterNode, quarter = Quarter}}.
+  {ok, #slaveNode_state{masterNode = MasterNode, quarter = Quarter}}.
 
 
 %% @private
@@ -74,23 +74,23 @@ handle_call(_Request, _From, State = #slaveNode_state{}) ->
 handle_cast({signMeUp, ElementPid, Location}, State = #slaveNode_state{}) ->
   SlavePid = self(),
   erlang:monitor(process, ElementPid),
-  gen_server:cast(State#slaveNode_state.mastrNode, {addElement, SlavePid, ElementPid, Location}),
+  gen_server:cast(State#slaveNode_state.masterNode, {addElement, SlavePid, ElementPid, Location}),
   ets:insert(etsLocation, {ElementPid, Location}),
   {noreply, State};
 
 handle_cast({updateElement, Element, NewLocation}, State = #slaveNode_state{}) ->
   ets:delete(etsLocation, Element),
   ets:insert(etsLocation, {Element, NewLocation}),
-  gen_server:cast(State#slaveNode_state.mastrNode, {updateElement, self(), Element, NewLocation}),
+  gen_server:cast(State#slaveNode_state.masterNode, {updateElement, self(), Element, NewLocation}),
   {noreply, State};
 
 handle_cast({deleteElement, Element}, State = #slaveNode_state{}) ->
   ets:delete(etsLocation, Element),
-  gen_server:cast(State#slaveNode_state.mastrNode, {deleteElement, self(), Element}),
+  gen_server:cast(State#slaveNode_state.masterNode, {deleteElement, self(), Element}),
   {noreply, State};
 
 handle_cast({moveToOtherQuarter, ElementPid, NewQuarter, NewLocation, Speed, Direction, Time}, State = #slaveNode_state{}) ->
-  gen_server:cast(State#slaveNode_state.mastrNode, {moveToOtherQuarter, self(), ElementPid, NewQuarter, NewLocation, Speed, Direction, Time}),
+  gen_server:cast(State#slaveNode_state.masterNode, {moveToOtherQuarter, self(), ElementPid, NewQuarter, NewLocation, Speed, Direction, Time}),
   ets:delete(etsLocation, ElementPid),
   {noreply, State};
 
@@ -142,12 +142,4 @@ spawnElementNodes(NUM_OF_ELEM, Quarter) ->
   ElementsNumbers = lists:seq(1, NUM_OF_ELEM div 4),
   [spawn(elementNode, start_link, [[SlavePid, Quarter]])|| _OneByOne <- ElementsNumbers].
 
-manageElements(ParentNode) -> io:format("Slave manageElements ~n ", []),
-  receive
-    {signUpElement, Element} ->
-      erlang:monitor(process,Element),
-      io:format("Slave signUpElement ~n ", []),
-      manageElements(ParentNode)
-    %{goodByeElement, Element} -> _
-  end.
 

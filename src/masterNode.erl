@@ -19,7 +19,7 @@
   code_change/3]).
 
 -define(SERVER, ?MODULE).
--define(NUM_OF_ELEMENTS, 16).
+-define(NUM_OF_ELEMENTS, 4).
 %-define(RefreshRate, 100).
 
 -record(masterNode_state, {slaveNodes, slaveAreas}).
@@ -44,6 +44,7 @@ start_link(SlaveNodes, SlaveAreas) ->
   {ok, State :: #masterNode_state{}} | {ok, State :: #masterNode_state{}, timeout() | hibernate} |
   {stop, Reason :: term()} | ignore).
 init([SlaveNodes, SlaveAreas]) ->
+  ets:new(etsSlaves,[set, public, named_table]),
   ets:new(etsElements,[set, public, named_table]),                                                                      % Create elements table
   ets:new(etsMessages,[ordered_set, public, named_table, {read_concurrency, true}, {write_concurrency, true}]),         % Create massages table
 
@@ -79,18 +80,29 @@ handle_call(_Request, _From, State = #masterNode_state{}) ->
   {noreply, NewState :: #masterNode_state{}} |
   {noreply, NewState :: #masterNode_state{}, timeout() | hibernate} |
   {stop, Reason :: term(), NewState :: #masterNode_state{}}).
+
+handle_cast({addSlave, SlaveNode, SlavePid, Quarter}, State = #masterNode_state{}) ->
+  ets:insert(etsSlaves, {Quarter, [SlaveNode, SlavePid]}),
+  io:format("Send to GUI - etsSlaves: ~p ~n", [ets:tab2list(etsSlaves)]),
+  {noreply, State};
+
 handle_cast({addElement, SlavePid, ElementPid, Location}, State = #masterNode_state{}) ->
   ets:insert(etsElements, {[SlavePid, ElementPid], Location}),   % etsElements: {[SlavePid, ElementPid],[X,Y]}  % {[<12526.105.0>,<12526.113.0>],[1916,114]
   {noreply, State};
 
 handle_cast({deleteElement, SlavePid, ElementPid}, State = #masterNode_state{}) ->
-  ets:delete(etsElements, {[SlavePid, ElementPid]}),   % etsElements: {[SlavePid, ElementPid],[X,Y]}  % {[<12526.105.0>,<12526.113.0>],[1916,114]
+  Test = ets:delete(etsElements, {[SlavePid, ElementPid]}),   % etsElements: {[SlavePid, ElementPid],[X,Y]}  % {[<12526.105.0>,<12526.113.0>],[1916,114]
+  io:format("deleteElement: ~p ~n", [[SlavePid, ElementPid]]),
+  LookUp = ets:lookup(etsElements, {[SlavePid, ElementPid]}),
+  io:format("LookUp: ~p ~n", [LookUp]),
+  io:format("Test: ~p ~n", [Test]),
+  io:format("deleteElement - etsElements: ~p ~n", [ets:tab2list(etsElements)]),
   {noreply, State};
 
 handle_cast({updateElement, SlavePid, Element, NewLocation}, State = #masterNode_state{}) ->
   ets:delete(etsElements, [SlavePid, Element]),
   ets:insert(etsElements, {[SlavePid, Element], NewLocation}),
-  io:format("Master etsElements: ~p ~n", [ets:tab2list(etsElements)]),
+  io:format("Send to GUI - etsElements: ~p ~n", [ets:tab2list(etsElements)]),
 {noreply, State};
 
 handle_cast({moveToOtherQuarter, SlavePid, ElementPid, NewQuarter, NewLocation, Speed, Direction, Time}, State = #masterNode_state{}) ->
@@ -148,6 +160,7 @@ manageSlaveNodes(SlaveNodes, MasterNode) -> io:format("Master MasterNode: ~p ~n"
 manageSlaveNodesLoop(MasterNode)->
   receive
     Test -> io:format("Master manageSlaveNodesLoop: ~p ~n", [Test])
+    % {nodedown,Node} ->                                                        %{nodedown,slave4@dgridish}
   end,
   manageSlaveNodesLoop(MasterNode).
 
@@ -155,6 +168,8 @@ index_of(Item, List) -> index_of(Item, List, 1).
 index_of(_, [], _)  -> not_found;
 index_of(Item, [Item|_], Index) -> Index;
 index_of(Item, [_|Tl], Index) -> index_of(Item, Tl, Index+1).
+
+
 
 %updateETS(GuiPid)->
 %  receive

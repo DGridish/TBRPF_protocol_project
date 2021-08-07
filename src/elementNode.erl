@@ -32,11 +32,11 @@
   {ok, Pid :: pid()} | ignore | {error, Reason :: term()}).
 start_link([ParentNode, Quarter]) ->
   {ok, ElementPid} = gen_server:start_link(?MODULE, [ParentNode, Quarter, {0, 0, 0, 0}], []),
-  UpdateEtsTimerPid = spawn(fun()->updateEtsTimer(ElementPid) end);
+  spawn(fun()->updateEtsTimer(ElementPid) end);
 
 start_link([ParentNode, Quarter, {NewLocation, Speed, Direction, Time}]) ->
   {ok, ElementPid} = gen_server:start_link(?MODULE, [ParentNode, Quarter, {NewLocation, Speed, Direction, Time}], []),
-  UpdateEtsTimerPid = spawn(fun()->updateEtsTimer(ElementPid) end).
+  spawn(fun()->updateEtsTimer(ElementPid) end).
 
 
 %%%===================================================================
