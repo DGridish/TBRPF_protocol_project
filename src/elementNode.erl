@@ -12,7 +12,7 @@
 -behaviour(gen_server).
 
 %% API
--export([start_link/2]).
+-export([start_link/1]).
 
 %% gen_server callbacks
 -export([init/1, handle_call/3, handle_cast/2, handle_info/2, terminate/2,
@@ -28,10 +28,14 @@
 %%%===================================================================
 
 %% @doc Spawns the server and registers the local name (unique)
--spec(start_link(ParentNode::atom(), Quarter::byte()) ->
+-spec(start_link(List::term()) ->
   {ok, Pid :: pid()} | ignore | {error, Reason :: term()}).
-start_link(ParentNode, Quarter) ->
-  {ok, ElementPid} = gen_server:start_link(?MODULE, [ParentNode, Quarter], []),
+start_link([ParentNode, Quarter]) ->
+  {ok, ElementPid} = gen_server:start_link(?MODULE, [ParentNode, Quarter, {0, 0, 0, 0}], []),
+  UpdateEtsTimerPid = spawn(fun()->updateEtsTimer(ElementPid) end);
+
+start_link([ParentNode, Quarter, {NewLocation, Speed, Direction, Time}]) ->
+  {ok, ElementPid} = gen_server:start_link(?MODULE, [ParentNode, Quarter, {NewLocation, Speed, Direction, Time}], []),
   UpdateEtsTimerPid = spawn(fun()->updateEtsTimer(ElementPid) end).
 
 
@@ -44,12 +48,18 @@ start_link(ParentNode, Quarter) ->
 -spec(init(Args :: term()) ->
   {ok, State :: #elementNode_state{}} | {ok, State :: #elementNode_state{}, timeout() | hibernate} |
   {stop, Reason :: term()} | ignore).
-init([ParentNode, Quarter]) ->
+init([ParentNode, Quarter, {NewLocation, NewSpeed, NewDirection, NewTime}]) ->
   ElementPid = self(),
-  [Location, Direction, Speed] = setSpeedAndDirection(Quarter),
-  gen_server:cast(ParentNode, {signMeUp, ElementPid, Location}),                                                                  % Update the parent node on its existence
+  if {NewLocation, NewSpeed, NewDirection, NewTime} == {0, 0, 0, 0} ->
+    [Location, Direction, Speed] = setSpeedAndDirection(Quarter),
+    gen_server:cast(ParentNode, {signMeUp, ElementPid, Location}),                                                      % Update the parent node on its existence
   {ok, #elementNode_state{elementPid = ElementPid, parentPid = ParentNode, quarter = Quarter,
-    location = Location, direction = Direction, speed = Speed, time = erlang:system_time(millisecond)}}.
+    location = Location, direction = Direction, speed = Speed, time = erlang:system_time(millisecond)}};
+
+  true -> gen_server:cast(ParentNode, {signMeUp, ElementPid, NewLocation}),
+    {ok, #elementNode_state{elementPid = ElementPid, parentPid = ParentNode, quarter = Quarter,
+    location = NewLocation, direction = NewDirection, speed = NewSpeed, time = NewTime}}
+  end.
 
 %% @private
 %% @doc Handling call messages
@@ -77,28 +87,17 @@ handle_cast({makeMovement}, State = #elementNode_state{}) ->
   NewQuarter = checkNewLocation(NewLocation),
   case NewQuarter of
     OldQuarter ->  gen_server:cast(State#elementNode_state.parentPid, {updateElement, self(), NewLocation});
-    offTheMap -> gen_server:cast(State#elementNode_state.parentPid, {deleteElement, self()});
+    offTheMap ->  gen_server:cast(State#elementNode_state.parentPid, {deleteElement, self()}),
+                  gen_server:cast(self(), {deleteElement});
     NewQuarter -> State#elementNode_state{quarter = NewQuarter},
-      gen_server:cast(State#elementNode_state.parentPid, {moveToOtherQuarter, State#elementNode_state.elementPid, NewQuarter, NewLocation})
+      gen_server:cast(State#elementNode_state.parentPid, {moveToOtherQuarter, State#elementNode_state.elementPid, NewQuarter, NewLocation,
+        State#elementNode_state.speed, State#elementNode_state.direction, State#elementNode_state.time}),
+      gen_server:cast(self(), {deleteElement})
   end,
-%%
-%%    offTheMap ->
-%%
-%%      gen_server:cast(self(),{deleteElement});
-%%
-%%    NewQuarter -> State#elementNode_state{quarter = NewQuarter},
-%%              if
-%%                (NewQuarter == State#elementNode_state.quarter) ->
-%%                  gen_server:cast(State#elementNode_state.parentPid, {updateElement, State#elementNode_state.elementPid, NewLocation});
-%%                true ->
-%%                  gen_server:cast(State#elementNode_state.parentPid, {moveToOtherQuarter, State#elementNode_state.elementPid, NewQuarter, NewLocation})
-%%              end
-%%  end,
-    %{noreply, #elementNode_state{location = NewLocation, time = NewTime}};
   {noreply, State#elementNode_state{location = NewLocation, time = NewTime}};
 
-%%handle_cast({deleteElement}, State = #elementNode_state{}) -> %TODO delete Element
-%% {{stop, shutdown, State}}
+handle_cast({deleteElement}, State = #elementNode_state{}) -> %TODO delete Element
+  {stop, shutdown, State};
 
 handle_cast(_Request, State = #elementNode_state{}) ->
   {noreply, State}.

@@ -20,7 +20,7 @@
 
 -define(SERVER, ?MODULE).
 
--record(slaveNode_state, {mastrNode}).
+-record(slaveNode_state, {mastrNode, quarter}).
 
 %%%===================================================================
 %%% API
@@ -42,12 +42,12 @@ start_link(SlaveNodes, SlaveAreas, NUM_OF_ELEM, MasterNode) -> io:format("Slave 
 -spec(init(Args :: term()) ->
   {ok, State :: #slaveNode_state{}} | {ok, State :: #slaveNode_state{}, timeout() | hibernate} |
   {stop, Reason :: term()} | ignore).
-init([SlaveNodes, SlaveAreas, NUM_OF_ELEM, MasterNode]) -> io:format("Slave init, master: ~p ~n ", [MasterNode]),
+init([SlaveNodes, SlaveAreas, NUM_OF_ELEM, MasterNode]) ->
   ets:new(etsLocation, [set, public, named_table, {read_concurrency, true}, {write_concurrency, true}]),                % Create elements location table
   Quarter = findSlaveNodeQuarter(SlaveNodes, SlaveAreas, node()),                                                       % Find the quarter for which the node is responsible from SlaveAreas list
   spawnElementNodes(NUM_OF_ELEM, Quarter),
   %manageElements(self()),
-  {ok, #slaveNode_state{mastrNode = MasterNode}}.
+  {ok, #slaveNode_state{mastrNode = MasterNode, quarter = Quarter}}.
 
 
 %% @private
@@ -82,7 +82,6 @@ handle_cast({updateElement, Element, NewLocation}, State = #slaveNode_state{}) -
   ets:delete(etsLocation, Element),
   ets:insert(etsLocation, {Element, NewLocation}),
   gen_server:cast(State#slaveNode_state.mastrNode, {updateElement, self(), Element, NewLocation}),
-  io:format("etsLocation updateElement: ~p ~n ", [ets:tab2list(etsLocation)]),
   {noreply, State};
 
 handle_cast({deleteElement, Element}, State = #slaveNode_state{}) ->
@@ -90,9 +89,14 @@ handle_cast({deleteElement, Element}, State = #slaveNode_state{}) ->
   gen_server:cast(State#slaveNode_state.mastrNode, {deleteElement, self(), Element}),
   {noreply, State};
 
-handle_cast({moveToOtherQuarter, ElementPid, NewQuarter, NewLocation}, State = #slaveNode_state{}) ->
-  gen_server:cast(State#slaveNode_state.mastrNode, {moveToOtherQuarter, ElementPid, NewQuarter, NewLocation}),
-{noreply, State};
+handle_cast({moveToOtherQuarter, ElementPid, NewQuarter, NewLocation, Speed, Direction, Time}, State = #slaveNode_state{}) ->
+  gen_server:cast(State#slaveNode_state.mastrNode, {moveToOtherQuarter, self(), ElementPid, NewQuarter, NewLocation, Speed, Direction, Time}),
+  ets:delete(etsLocation, ElementPid),
+  {noreply, State};
+
+handle_cast({createElement, NewLocation, Speed, Direction, Time}, State = #slaveNode_state{}) ->
+  spawn(elementNode, start_link, [[self(), State#slaveNode_state.quarter, {NewLocation, Speed, Direction, Time}]]),
+  {noreply, State};
 
 handle_cast(_Request, State = #slaveNode_state{}) ->
   % TODO decide on message types
@@ -136,7 +140,7 @@ findSlaveNodeQuarter([_H1|T1], [_H2|T2], Node) -> findSlaveNodeQuarter(T1, T2, N
 spawnElementNodes(NUM_OF_ELEM, Quarter) ->
   SlavePid = self(),
   ElementsNumbers = lists:seq(1, NUM_OF_ELEM div 4),
-  [spawn(elementNode, start_link, [SlavePid, Quarter])|| _OneByOne <- ElementsNumbers].
+  [spawn(elementNode, start_link, [[SlavePid, Quarter]])|| _OneByOne <- ElementsNumbers].
 
 manageElements(ParentNode) -> io:format("Slave manageElements ~n ", []),
   receive

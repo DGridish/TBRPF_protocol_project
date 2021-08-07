@@ -31,7 +31,7 @@
 %% @doc Spawns the server and registers the local name (unique)
 -spec(start_link(SlaveNodes::list(), SlaveAreas::list()) ->
   {ok, Pid :: pid()} | ignore | {error, Reason :: term()}).
-start_link(SlaveNodes, SlaveAreas) -> io:format("Master start_link~n", []),
+start_link(SlaveNodes, SlaveAreas) ->
   gen_server:start_link({global, node()}, ?MODULE, [SlaveNodes, SlaveAreas], []).
 
 %%%===================================================================
@@ -43,7 +43,7 @@ start_link(SlaveNodes, SlaveAreas) -> io:format("Master start_link~n", []),
 -spec(init(Args :: term()) ->
   {ok, State :: #masterNode_state{}} | {ok, State :: #masterNode_state{}, timeout() | hibernate} |
   {stop, Reason :: term()} | ignore).
-init([SlaveNodes, SlaveAreas]) -> io:format("Master init~n", []),
+init([SlaveNodes, SlaveAreas]) ->
   ets:new(etsElements,[set, public, named_table]),                                                                      % Create elements table
   ets:new(etsMessages,[ordered_set, public, named_table, {read_concurrency, true}, {write_concurrency, true}]),         % Create massages table
 
@@ -58,7 +58,7 @@ init([SlaveNodes, SlaveAreas]) -> io:format("Master init~n", []),
 
   % TODO send massages between elements
 
-  {ok, #masterNode_state{}}.
+  {ok, #masterNode_state{slaveNodes = SlaveNodes, slaveAreas = SlaveAreas}}.
 
 %% @private
 %% @doc Handling call messages
@@ -80,7 +80,6 @@ handle_call(_Request, _From, State = #masterNode_state{}) ->
   {noreply, NewState :: #masterNode_state{}, timeout() | hibernate} |
   {stop, Reason :: term(), NewState :: #masterNode_state{}}).
 handle_cast({addElement, SlavePid, ElementPid, Location}, State = #masterNode_state{}) ->
-  io:format("Master signMeUp !~p ~n ", [{[SlavePid, ElementPid], Location}]),
   ets:insert(etsElements, {[SlavePid, ElementPid], Location}),   % etsElements: {[SlavePid, ElementPid],[X,Y]}  % {[<12526.105.0>,<12526.113.0>],[1916,114]
   {noreply, State};
 
@@ -91,7 +90,15 @@ handle_cast({deleteElement, SlavePid, ElementPid}, State = #masterNode_state{}) 
 handle_cast({updateElement, SlavePid, Element, NewLocation}, State = #masterNode_state{}) ->
   ets:delete(etsElements, [SlavePid, Element]),
   ets:insert(etsElements, {[SlavePid, Element], NewLocation}),
-  io:format("Master updateElement !~p ~n ", [{[SlavePid, Element], NewLocation}]),
+  io:format("Master etsElements: ~p ~n", [ets:tab2list(etsElements)]),
+{noreply, State};
+
+handle_cast({moveToOtherQuarter, SlavePid, ElementPid, NewQuarter, NewLocation, Speed, Direction, Time}, State = #masterNode_state{}) ->
+  ets:delete(etsElements, [SlavePid, ElementPid]),
+  SlaveIndex = index_of(NewQuarter, State#masterNode_state.slaveAreas),
+  NewSlave = lists:nth(SlaveIndex, State#masterNode_state.slaveNodes),
+  gen_server:cast(NewSlave, {createElement, NewLocation, Speed, Direction, Time}),
+
 {noreply, State};
 
 handle_cast(_Request, State = #masterNode_state{}) ->
@@ -144,6 +151,10 @@ manageSlaveNodesLoop(MasterNode)->
   end,
   manageSlaveNodesLoop(MasterNode).
 
+index_of(Item, List) -> index_of(Item, List, 1).
+index_of(_, [], _)  -> not_found;
+index_of(Item, [Item|_], Index) -> Index;
+index_of(Item, [_|Tl], Index) -> index_of(Item, Tl, Index+1).
 
 %updateETS(GuiPid)->
 %  receive
