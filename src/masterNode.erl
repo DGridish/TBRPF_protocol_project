@@ -88,6 +88,11 @@ handle_cast({deleteElement, SlavePid, ElementPid}, State = #masterNode_state{}) 
   ets:delete(etsElements, {[SlavePid, ElementPid]}),   % etsElements: {[SlavePid, ElementPid],[X,Y]}  % {[<12526.105.0>,<12526.113.0>],[1916,114]
   {noreply, State};
 
+handle_cast({updateElement, SlavePid, Element, NewLocation}, State = #masterNode_state{}) ->
+  ets:delete(etsElements, [SlavePid, Element]),
+  ets:insert(etsElements, {[SlavePid, Element], NewLocation}),
+  io:format("Master updateElement !~p ~n ", [{[SlavePid, Element], NewLocation}]),
+{noreply, State};
 
 handle_cast(_Request, State = #masterNode_state{}) ->
   {noreply, State}.

@@ -75,10 +75,14 @@ handle_cast({signMeUp, ElementPid, Location}, State = #slaveNode_state{}) ->
   SlavePid = self(),
   erlang:monitor(process, ElementPid),
   gen_server:cast(State#slaveNode_state.mastrNode, {addElement, SlavePid, ElementPid, Location}),
+  ets:insert(etsLocation, {ElementPid, Location}),
   {noreply, State};
 
 handle_cast({updateElement, Element, NewLocation}, State = #slaveNode_state{}) ->
-  ets:update_element(etsLocation, Element, NewLocation),
+  ets:delete(etsLocation, Element),
+  ets:insert(etsLocation, {Element, NewLocation}),
+  gen_server:cast(State#slaveNode_state.mastrNode, {updateElement, self(), Element, NewLocation}),
+  io:format("etsLocation updateElement: ~p ~n ", [ets:tab2list(etsLocation)]),
   {noreply, State};
 
 handle_cast({deleteElement, Element}, State = #slaveNode_state{}) ->
@@ -86,11 +90,13 @@ handle_cast({deleteElement, Element}, State = #slaveNode_state{}) ->
   gen_server:cast(State#slaveNode_state.mastrNode, {deleteElement, self(), Element}),
   {noreply, State};
 
+handle_cast({moveToOtherQuarter, ElementPid, NewQuarter, NewLocation}, State = #slaveNode_state{}) ->
+  gen_server:cast(State#slaveNode_state.mastrNode, {moveToOtherQuarter, ElementPid, NewQuarter, NewLocation}),
+{noreply, State};
+
 handle_cast(_Request, State = #slaveNode_state{}) ->
   % TODO decide on message types
   {noreply, State}.
-
-
 
 %% @private
 %% @doc Handling all non call/cast messages

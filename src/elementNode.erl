@@ -71,24 +71,34 @@ handle_call(_Request, _From, State = #elementNode_state{}) ->
   {noreply, NewState :: #elementNode_state{}, timeout() | hibernate} |
   {stop, Reason :: term(), NewState :: #elementNode_state{}}).
 handle_cast({makeMovement}, State = #elementNode_state{}) ->
+  OldQuarter = State#elementNode_state.quarter,
   [NewX, NewY, NewTime] = calcMovement(State),
   NewLocation = [NewX, NewY],
-  case checkNewLocation(NewLocation) of
-    offTheMap ->
-      gen_server:cast(State#elementNode_state.parentPid, {deleteElement, self()}),
-      gen_server:cast(self(),{deleteElement});
-    NewQuarter -> State#elementNode_state{quarter = NewQuarter, location = NewLocation, time = NewTime},
-              if
-                (NewQuarter == State#elementNode_state.quarter) ->
-                  gen_server:cast(State#elementNode_state.parentPid, {updateElement, State#elementNode_state.elementPid, NewLocation});
-                true ->
-                  gen_server:cast(State#elementNode_state.parentPid, {moveToOtherQuarter, State#elementNode_state.elementPid, NewQuarter, NewLocation})
-              end
+  NewQuarter = checkNewLocation(NewLocation),
+  case NewQuarter of
+    OldQuarter ->  gen_server:cast(State#elementNode_state.parentPid, {updateElement, self(), NewLocation});
+    offTheMap -> gen_server:cast(State#elementNode_state.parentPid, {deleteElement, self()});
+    NewQuarter -> State#elementNode_state{quarter = NewQuarter},
+      gen_server:cast(State#elementNode_state.parentPid, {moveToOtherQuarter, State#elementNode_state.elementPid, NewQuarter, NewLocation})
   end,
-  {noreply, State};
+%%
+%%    offTheMap ->
+%%
+%%      gen_server:cast(self(),{deleteElement});
+%%
+%%    NewQuarter -> State#elementNode_state{quarter = NewQuarter},
+%%              if
+%%                (NewQuarter == State#elementNode_state.quarter) ->
+%%                  gen_server:cast(State#elementNode_state.parentPid, {updateElement, State#elementNode_state.elementPid, NewLocation});
+%%                true ->
+%%                  gen_server:cast(State#elementNode_state.parentPid, {moveToOtherQuarter, State#elementNode_state.elementPid, NewQuarter, NewLocation})
+%%              end
+%%  end,
+    %{noreply, #elementNode_state{location = NewLocation, time = NewTime}};
+  {noreply, State#elementNode_state{location = NewLocation, time = NewTime}};
 
-handle_cast({deleteElement}, State = #elementNode_state{}) -> %TODO delete Element
-  {{stop, shutdown, State}};
+%%handle_cast({deleteElement}, State = #elementNode_state{}) -> %TODO delete Element
+%% {{stop, shutdown, State}}
 
 handle_cast(_Request, State = #elementNode_state{}) ->
   {noreply, State}.
@@ -149,9 +159,8 @@ calcMovement(State) ->
   Speed = State#elementNode_state.speed,
   NewTime = erlang:system_time(millisecond),
   MovementTime = NewTime - State#elementNode_state.time,
-
-  NewX = round(OldX + math:cos(Direction * math:pi() / 180) * Speed * MovementTime),
-  NewY = round(OldY + math:sin(Direction * math:pi() / 180) * Speed * MovementTime),
+  NewX = round(OldX + math:cos(Direction * math:pi() / 180) * Speed * (MovementTime / 1000)),
+  NewY = round(OldY + math:sin(Direction * math:pi() / 180) * Speed * (MovementTime / 1000)),
   [NewX, NewY, NewTime].
 
 checkNewLocation([X,Y]) ->
