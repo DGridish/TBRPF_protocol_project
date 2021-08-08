@@ -1,5 +1,5 @@
 %%%-------------------------------------------------------------------
-%%% @author dgridish
+%%% @author Dan Gridish
 %%% @copyright (C) 2021, <COMPANY>
 %%% @doc
 %%%

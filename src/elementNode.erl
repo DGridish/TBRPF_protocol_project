@@ -1,5 +1,5 @@
 %%%-------------------------------------------------------------------
-%%% @author dgridish
+%%% @author Dan Gridish
 %%% @copyright (C) 2021, <COMPANY>
 %%% @doc
 %%%
@@ -87,9 +87,9 @@ handle_cast({makeMovement}, State = #elementNode_state{}) ->
   NewQuarter = checkNewLocation(NewLocation),
   case NewQuarter of
     OldQuarter ->  gen_server:cast(State#elementNode_state.parentPid, {updateElement, self(), NewLocation});
-    offTheMap ->  gen_server:cast(State#elementNode_state.parentPid, {deleteElement, self()}), % TODO What to do when an element is off the map
+    offTheMap ->  gen_server:cast(State#elementNode_state.parentPid, {deleteElement, self()}), % TODO What to do when an element is off the map - poll
                   gen_server:cast(self(), {deleteElement});
-    NewQuarter -> State#elementNode_state{quarter = NewQuarter},
+    NewQuarter -> Test = State#elementNode_state{quarter = NewQuarter},
       gen_server:cast(State#elementNode_state.parentPid, {moveToOtherQuarter, State#elementNode_state.elementPid, NewQuarter, NewLocation,
         State#elementNode_state.speed, State#elementNode_state.direction, State#elementNode_state.time}),
       gen_server:cast(self(), {deleteElement})
