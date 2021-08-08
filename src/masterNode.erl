@@ -7,7 +7,7 @@
 %%% Created : 01. Aug 2021 14:25
 %%%-------------------------------------------------------------------
 -module(masterNode).
--author("dgridish").
+-author("Dan Gridish").
 
 -behaviour(gen_server).
 
@@ -19,7 +19,7 @@
   code_change/3]).
 
 -define(SERVER, ?MODULE).
--define(NUM_OF_ELEMENTS, 4).
+-define(NUM_OF_ELEMENTS, 16).
 %-define(RefreshRate, 100).
 
 -record(masterNode_state, {slaveNodes, slaveAreas}).
@@ -81,6 +81,11 @@ handle_call(_Request, _From, State = #masterNode_state{}) ->
   {noreply, NewState :: #masterNode_state{}, timeout() | hibernate} |
   {stop, Reason :: term(), NewState :: #masterNode_state{}}).
 
+handle_cast({allParameters, Parameters}, State = #masterNode_state{}) ->   % Parameters = {NumberOfElements, MaxSpeed, BroadcastRadius}
+  EtsSlavesList = ets:tab2list(etsSlaves),
+  [gen_server:cast(SlavePid, {allParameters, Parameters}) || {_Quarter, [_Node, SlavePid]} <- EtsSlavesList],
+  {noreply, State};
+
 handle_cast({addSlave, SlaveNode, SlavePid, Quarter}, State = #masterNode_state{}) ->
   ets:insert(etsSlaves, {Quarter, [SlaveNode, SlavePid]}),
   io:format("Send to GUI - etsSlaves: ~p ~n", [ets:tab2list(etsSlaves)]),
@@ -91,12 +96,7 @@ handle_cast({addElement, SlavePid, ElementPid, Location}, State = #masterNode_st
   {noreply, State};
 
 handle_cast({deleteElement, SlavePid, ElementPid}, State = #masterNode_state{}) ->
-  Test = ets:delete(etsElements, {[SlavePid, ElementPid]}),   % etsElements: {[SlavePid, ElementPid],[X,Y]}  % {[<12526.105.0>,<12526.113.0>],[1916,114]
-  io:format("deleteElement: ~p ~n", [[SlavePid, ElementPid]]),
-  LookUp = ets:lookup(etsElements, {[SlavePid, ElementPid]}),
-  io:format("LookUp: ~p ~n", [LookUp]),
-  io:format("Test: ~p ~n", [Test]),
-  io:format("deleteElement - etsElements: ~p ~n", [ets:tab2list(etsElements)]),
+  ets:delete(etsElements, [SlavePid, ElementPid]),   % etsElements: {[SlavePid, ElementPid],[X,Y]}  % {[<12526.105.0>,<12526.113.0>],[1916,114]
   {noreply, State};
 
 handle_cast({updateElement, SlavePid, Element, NewLocation}, State = #masterNode_state{}) ->
@@ -110,7 +110,10 @@ handle_cast({moveToOtherQuarter, SlavePid, ElementPid, NewQuarter, NewLocation, 
   SlaveIndex = index_of(NewQuarter, State#masterNode_state.slaveAreas),
   NewSlave = lists:nth(SlaveIndex, State#masterNode_state.slaveNodes),
   gen_server:cast(NewSlave, {createElement, NewLocation, Speed, Direction, Time}),
+{noreply, State};
 
+handle_cast({slaveNodeDown, Node}, State = #masterNode_state{}) ->
+  % TODO Transfer all the elements of the fallen node to another node
 {noreply, State};
 
 handle_cast(_Request, State = #masterNode_state{}) ->
@@ -160,7 +163,7 @@ manageSlaveNodes(SlaveNodes, MasterNode) -> io:format("Master MasterNode: ~p ~n"
 manageSlaveNodesLoop(MasterNode)->
   receive
     Test -> io:format("Master manageSlaveNodesLoop: ~p ~n", [Test])
-    % {nodedown,Node} ->                                                        %{nodedown,slave4@dgridish}
+    % {nodedown,Node} -> gen_server:cast(MasterNode, {slaveNodeDown, Node})                                             %{nodedown,slave4@dgridish}
   end,
   manageSlaveNodesLoop(MasterNode).
 

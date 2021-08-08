@@ -7,7 +7,7 @@
 %%% Created : 01. Aug 2021 14:35
 %%%-------------------------------------------------------------------
 -module(protocolTBRPF).
--author("dgridish").
+-author("Dan Gridish").
 
 -behaviour(gen_server).
 

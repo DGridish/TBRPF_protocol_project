@@ -7,7 +7,7 @@
 %%% Created : 01. Aug 2021 14:35
 %%%-------------------------------------------------------------------
 -module(elementNode).
--author("dgridish").
+-author("Dan Gridish").
 
 -behaviour(gen_server).
 
@@ -55,11 +55,11 @@ init([ParentNode, Quarter, {NewLocation, NewSpeed, NewDirection, NewTime}]) ->
     gen_server:cast(ParentNode, {signMeUp, ElementPid, Location}),                                                      % Update the parent node on its existence
   {ok, #elementNode_state{elementPid = ElementPid, parentPid = ParentNode, quarter = Quarter,
     location = Location, direction = Direction, speed = Speed, time = erlang:system_time(millisecond)}};
-
   true -> gen_server:cast(ParentNode, {signMeUp, ElementPid, NewLocation}),
     {ok, #elementNode_state{elementPid = ElementPid, parentPid = ParentNode, quarter = Quarter,
     location = NewLocation, direction = NewDirection, speed = NewSpeed, time = NewTime}}
   end.
+  % TODO protocolTBRPF start_link - spawn(protocolTBRPF, start_link, [[??, ??]])
 
 %% @private
 %% @doc Handling call messages
@@ -87,7 +87,7 @@ handle_cast({makeMovement}, State = #elementNode_state{}) ->
   NewQuarter = checkNewLocation(NewLocation),
   case NewQuarter of
     OldQuarter ->  gen_server:cast(State#elementNode_state.parentPid, {updateElement, self(), NewLocation});
-    offTheMap ->  gen_server:cast(State#elementNode_state.parentPid, {deleteElement, self()}),
+    offTheMap ->  gen_server:cast(State#elementNode_state.parentPid, {deleteElement, self()}), % TODO What to do when an element is off the map
                   gen_server:cast(self(), {deleteElement});
     NewQuarter -> State#elementNode_state{quarter = NewQuarter},
       gen_server:cast(State#elementNode_state.parentPid, {moveToOtherQuarter, State#elementNode_state.elementPid, NewQuarter, NewLocation,
@@ -96,7 +96,7 @@ handle_cast({makeMovement}, State = #elementNode_state{}) ->
   end,
   {noreply, State#elementNode_state{location = NewLocation, time = NewTime}};
 
-handle_cast({deleteElement}, State = #elementNode_state{}) -> %TODO delete Element
+handle_cast({deleteElement}, State = #elementNode_state{}) -> %TODO How to completely delete an element
   {stop, shutdown, State};
 
 handle_cast(_Request, State = #elementNode_state{}) ->

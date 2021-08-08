@@ -7,7 +7,7 @@
 %%% Created : 01. Aug 2021 14:26
 %%%-------------------------------------------------------------------
 -module(slaveNode).
--author("dgridish").
+-author("Dan Gridish").
 
 -behaviour(gen_server).
 
@@ -31,7 +31,6 @@
   {ok, Pid :: pid()} | ignore | {error, Reason :: term()}).
 start_link(SlaveNodes, SlaveAreas, NUM_OF_ELEM, MasterNode) ->
   gen_server:start_link({global, node()}, ?MODULE, [SlaveNodes, SlaveAreas, NUM_OF_ELEM, MasterNode], []).
-
 
 %%%===================================================================
 %%% gen_server callbacks
@@ -61,7 +60,6 @@ init([SlaveNodes, SlaveAreas, NUM_OF_ELEM, MasterNode]) ->
   {stop, Reason :: term(), Reply :: term(), NewState :: #slaveNode_state{}} |
   {stop, Reason :: term(), NewState :: #slaveNode_state{}}).
 handle_call(_Request, _From, State = #slaveNode_state{}) ->
-  % TODO decide on message types
   {reply, ok, State}.
 
 %% @private
@@ -98,8 +96,11 @@ handle_cast({createElement, NewLocation, Speed, Direction, Time}, State = #slave
   spawn(elementNode, start_link, [[self(), State#slaveNode_state.quarter, {NewLocation, Speed, Direction, Time}]]),
   {noreply, State};
 
+handle_cast({allParameters, Parameters}, State = #slaveNode_state{}) ->
+  % TODO send parameters - Re-creation of elements with new parameters or Updating existing elements and creating additional elements
+{noreply, State};
+
 handle_cast(_Request, State = #slaveNode_state{}) ->
-  % TODO decide on message types
   {noreply, State}.
 
 %% @private
