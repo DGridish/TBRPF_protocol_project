@@ -19,7 +19,7 @@
   code_change/3]).
 
 -define(SERVER, ?MODULE).
--define(NUM_OF_ELEMENTS, 16).
+-define(NUM_OF_ELEMENTS, 4).
 %-define(RefreshRate, 100).
 
 -record(mainNode_state, {qNodes, qAreas}).

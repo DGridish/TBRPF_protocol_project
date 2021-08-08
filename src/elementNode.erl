@@ -48,13 +48,14 @@ start_link([ParentNode, Quarter, {NewLocation, Speed, Direction, Time}]) ->
 -spec(init(Args :: term()) ->
   {ok, State :: #elementNode_state{}} | {ok, State :: #elementNode_state{}, timeout() | hibernate} |
   {stop, Reason :: term()} | ignore).
-init([ParentNode, Quarter, {NewLocation, NewSpeed, NewDirection, NewTime}]) ->
+init([ParentNode, Quarter, {NewLocation, NewSpeed, NewDirection, NewTime}]) -> io:format("Element init: ~p ~n", [self()]),
   ElementPid = self(),
   if {NewLocation, NewSpeed, NewDirection, NewTime} == {0, 0, 0, 0} ->
     [Location, Direction, Speed] = setSpeedAndDirection(Quarter),
     gen_server:cast(ParentNode, {signMeUp, ElementPid, Location}),                                                      % Update the parent node on its existence
   {ok, #elementNode_state{elementPid = ElementPid, parentPid = ParentNode, quarter = Quarter,
     location = Location, direction = Direction, speed = Speed, time = erlang:system_time(millisecond)}};
+
   true -> gen_server:cast(ParentNode, {signMeUp, ElementPid, NewLocation}),
     {ok, #elementNode_state{elementPid = ElementPid, parentPid = ParentNode, quarter = Quarter,
     location = NewLocation, direction = NewDirection, speed = NewSpeed, time = NewTime}}
@@ -82,19 +83,32 @@ handle_call(_Request, _From, State = #elementNode_state{}) ->
   {stop, Reason :: term(), NewState :: #elementNode_state{}}).
 handle_cast({makeMovement}, State = #elementNode_state{}) ->
   OldQuarter = State#elementNode_state.quarter,
+  OLdDirection = State#elementNode_state.direction,
   [NewX, NewY, NewTime] = calcMovement(State),
   NewLocation = [NewX, NewY],
   NewQuarter = checkNewLocation(NewLocation),
   case NewQuarter of
-    OldQuarter ->  gen_server:cast(State#elementNode_state.parentPid, {updateElement, self(), NewLocation});
-    offTheMap ->  gen_server:cast(State#elementNode_state.parentPid, {deleteElement, self()}), % TODO What to do when an element is off the map - poll
-                  gen_server:cast(self(), {deleteElement});
-    NewQuarter -> Test = State#elementNode_state{quarter = NewQuarter},
+    OldQuarter ->  gen_server:cast(State#elementNode_state.parentPid, {updateElement, self(), NewLocation}),
+      {noreply, State#elementNode_state{location = NewLocation, time = NewTime}};
+
+    offTheMap -> % billiard table movement
+      gen_server:cast(State#elementNode_state.parentPid, {updateElement, self(), NewLocation}),
+      if
+        NewX < 0 -> NewDirection = (2 * 270 - State#elementNode_state.direction) rem 360;
+        NewX > 2000 -> NewDirection = (180 - State#elementNode_state.direction) rem 360;
+        NewY < 0 -> NewDirection = (360 - State#elementNode_state.direction) rem 360;
+        NewY > 2000 -> NewDirection = (180 - State#elementNode_state.direction) rem 360;
+        true -> NewDirection = OLdDirection
+      end,
+      io:format("PID, OLdDirection, NewDirection, OldQuarter, NewQuarter : ~p ~n", [[self(), OLdDirection, NewDirection, OldQuarter, NewQuarter]]),
+      {noreply, State#elementNode_state{location = NewLocation, direction = NewDirection, time = NewTime}};
+
+    NewQuarter -> io:format("NewQuarter : ~p ~n", [[self(),NewQuarter]]),
       gen_server:cast(State#elementNode_state.parentPid, {moveToOtherQuarter, State#elementNode_state.elementPid, NewQuarter, NewLocation,
         State#elementNode_state.speed, State#elementNode_state.direction, State#elementNode_state.time}),
-      gen_server:cast(self(), {deleteElement})
-  end,
-  {noreply, State#elementNode_state{location = NewLocation, time = NewTime}};
+      gen_server:cast(self(), {deleteElement}),
+      {noreply, State#elementNode_state{quarter = NewQuarter, location = NewLocation, time = NewTime}}
+  end;
 
 handle_cast({deleteElement}, State = #elementNode_state{}) -> %TODO How to completely delete an element
   {stop, shutdown, State};
@@ -164,10 +178,10 @@ calcMovement(State) ->
 
 checkNewLocation([X,Y]) ->
   if
-    ((X < 0) or (X > 2000) or (Y < 0) or (Y > 2000)) -> offTheMap;
+    ((X =< 0) or (X >= 2000) or (Y =< 0) or (Y >= 2000)) -> offTheMap;
     ((X > 0) and (X < 1000) and (Y > 0) and (Y < 1000)) -> 1;
     ((X > 1000) and (X < 2000) and (Y > 0) and (Y < 1000)) -> 2;
     ((X > 0) and (X < 1000) and (Y > 1000) and (Y < 2000)) -> 3;
     ((X > 1000) and (X < 2000) and (Y > 1000) and (Y < 2000)) -> 4;
-    true -> offTheMap
+    true -> io:format("1111111111111111111111111111111 ~p ~n", [[X,Y]])
   end.

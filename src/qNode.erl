@@ -90,6 +90,7 @@ handle_cast({deleteElement, Element}, State = #qNode_state{}) ->
 handle_cast({moveToOtherQuarter, ElementPid, NewQuarter, NewLocation, Speed, Direction, Time}, State = #qNode_state{}) ->
   gen_server:cast(State#qNode_state.mainNode, {moveToOtherQuarter, self(), ElementPid, NewQuarter, NewLocation, Speed, Direction, Time}),
   ets:delete(etsLocation, ElementPid),
+  gen_server:cast(self(), {createElement, NewLocation, Speed, Direction, Time}),
   {noreply, State};
 
 handle_cast({createElement, NewLocation, Speed, Direction, Time}, State = #qNode_state{}) ->
