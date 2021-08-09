@@ -101,6 +101,14 @@ handle_cast({allParameters, Parameters}, State = #qNode_state{}) ->
   % TODO send parameters - Re-creation of elements with new parameters or Updating existing elements and creating additional elements
 {noreply, State};
 
+handle_cast({sendMassage, FromElement, ToQPid, ToElement, Data}, State = #qNode_state{}) ->
+  MyQpid = self(),
+  if
+    ToQPid == MyQpid -> gen_server:cast(FromElement, {sendMassageDirectly, ToElement, Data});
+    true -> gen_server:cast(FromElement, {sendMassageViaQNode, ToElement, Data})
+  end,
+  {noreply, State};
+
 handle_cast(_Request, State = #qNode_state{}) ->
   {noreply, State}.
 

@@ -20,6 +20,7 @@
 
 -define(SERVER, ?MODULE).
 -define(NUM_OF_ELEMENTS, 4).
+-define(sendMassageTimer, 1). % per 5 seconds
 %-define(RefreshRate, 100).
 
 -record(mainNode_state, {qNodes, qAreas}).
@@ -44,21 +45,23 @@ start_link(QNodes, QAreas) ->
   {ok, State :: #mainNode_state{}} | {ok, State :: #mainNode_state{}, timeout() | hibernate} |
   {stop, Reason :: term()} | ignore).
 init([QNodes, QAreas]) ->
+  MainNodePid = self(),
   ets:new(etsQs,[set, public, named_table]),
-  ets:new(etsElements,[set, public, named_table]),                                                                      % Create elements table
+  ets:new(etsElements,[ordered_set, public, named_table]),                                                                      % Create elements table
   ets:new(etsMessages,[ordered_set, public, named_table, {read_concurrency, true}, {write_concurrency, true}]),         % Create massages table
+
+  % TODO send massages between elements
+  io:format("MainNodePid ~p ~n", [MainNodePid]),
+  spawn(fun()->sendMassagesRoutine(MainNodePid) end),
 
   % TODO spawn GUI
   % GuiPid = guiStateM:start_link([QNodes, node()]),
-  % spawn_link(fun()-> updateETS(GuiPid) end).
-
+  % spawn_link(fun()-> sendDataToGui(GuiPid) end).
+  spawn_link(fun()-> sendDataToGui() end),
   % TODO pass parameters to q node or use default in qNode? What parameters?
 
   spawnQNodes(QNodes, QAreas, ?NUM_OF_ELEMENTS, init),                                                      % Spawn q nodes
-  spawn_link(fun() -> manageQNodes(QNodes, node()) end),                                                        % Monitor q nodes
-
-  % TODO send massages between elements
-
+  spawn_link(fun() -> manageQNodes(QNodes, node()) end),                                                    % Monitor q nodes
   {ok, #mainNode_state{qNodes = QNodes, qAreas = QAreas}}.
 
 %% @private
@@ -87,33 +90,43 @@ handle_cast({allParameters, Parameters}, State = #mainNode_state{}) ->   % Param
   {noreply, State};
 
 handle_cast({addQ, QNode, QPid, Quarter}, State = #mainNode_state{}) ->
-  ets:insert(etsQs, {Quarter, [QNode, QPid]}),
+  ets:insert(etsQs, {Quarter, {QNode, QPid}}),
   io:format("Send to GUI - etsQs: ~p ~n", [ets:tab2list(etsQs)]),
   {noreply, State};
 
 handle_cast({addElement, QPid, ElementPid, Location}, State = #mainNode_state{}) ->
-  ets:insert(etsElements, {[QPid, ElementPid], Location}),   % etsElements: {[QPid, ElementPid],[X,Y]}  % {[<12526.105.0>,<12526.113.0>],[1916,114]
+  ets:insert(etsElements, {{QPid, ElementPid}, Location}),   % etsElements: {[QPid, ElementPid],[X,Y]}  % {[<12526.105.0>,<12526.113.0>],[1916,114]
   {noreply, State};
 
 handle_cast({deleteElement, QPid, ElementPid}, State = #mainNode_state{}) ->
-  ets:delete(etsElements, [QPid, ElementPid]),   % etsElements: {[QPid, ElementPid],[X,Y]}  % {[<12526.105.0>,<12526.113.0>],[1916,114]
+  ets:delete(etsElements, {QPid, ElementPid}),   % etsElements: {[QPid, ElementPid],[X,Y]}  % {[<12526.105.0>,<12526.113.0>],[1916,114]
   {noreply, State};
 
 handle_cast({updateElement, QPid, Element, NewLocation}, State = #mainNode_state{}) ->
-  ets:delete(etsElements, [QPid, Element]),
-  ets:insert(etsElements, {[QPid, Element], NewLocation}),
-  io:format("Send to GUI - etsElements: ~p ~n", [ets:tab2list(etsElements)]),
+  ets:delete(etsElements, {QPid, Element}),
+  ets:insert(etsElements, {{QPid, Element}, NewLocation}),
 {noreply, State};
 
 handle_cast({moveToOtherQuarter, QPid, ElementPid, NewQuarter, NewLocation, Speed, Direction, Time}, State = #mainNode_state{}) ->
-  ets:delete(etsElements, [QPid, ElementPid]),
+  ets:delete(etsElements, {QPid, ElementPid}),
   QIndex = index_of(NewQuarter, State#mainNode_state.qAreas),
   NewQ = lists:nth(QIndex, State#mainNode_state.qNodes),
   gen_server:cast(NewQ, {createElement, NewLocation, Speed, Direction, Time}),
 {noreply, State};
 
+handle_cast({sendMassage}, State = #mainNode_state{}) ->
+  % TODO Pick to element and send msg
+  Data = rand:uniform(1000),
+  From = ets:first(etsElements),
+  To = ets:last(etsElements),
+  {FromQPid, FromElement} = From,
+  {ToQPid, ToElement} = To,
+  gen_server:cast(FromQPid, {sendMassage, FromElement, ToQPid, ToElement, Data}),
+  io:format("sendMassageF ~p ~n", [[FromQPid, FromElement, ToQPid, ToElement, Data]]),
+{noreply, State};
+
 handle_cast({qNodeDown, Node}, State = #mainNode_state{}) ->
-  % TODO Transfer all the elements of the fallen node to another node
+% TODO Transfer all the elements of the fallen node to another node
 {noreply, State};
 
 handle_cast(_Request, State = #mainNode_state{}) ->
@@ -155,15 +168,16 @@ spawnQNodes(QNodes, QAreas, NUM_OF_ELEM, init) -> [spawnQNodes(QNodes, QAreas, N
 spawnQNodes(QNodes, QAreas, NUM_OF_ELEM, Node) -> spawn(Node, qNode, start_link, [QNodes, QAreas, NUM_OF_ELEM, self()]).
 
 % Monitor all q nodes
-manageQNodes(QNodes, MainNode) -> io:format("Main MainNode: ~p ~n", [MainNode]),
+manageQNodes(QNodes, MainNode) ->
   [erlang:monitor_node(Node, true) || Node <- QNodes],
   manageQNodesLoop(MainNode).
 
 % Wait here for messages from q nodes
 manageQNodesLoop(MainNode)->
   receive
+  % {nodedown,Node} -> gen_server:cast(MainNode, {qNodeDown, Node}),                                                    %{nodedown,q4@dgridish}
     Test -> io:format("Main manageQNodesLoop: ~p ~n", [Test])
-    % {nodedown,Node} -> gen_server:cast(MainNode, {qNodeDown, Node})                                                   %{nodedown,q4@dgridish}
+
   end,
   manageQNodesLoop(MainNode).
 
@@ -172,12 +186,24 @@ index_of(_, [], _)  -> not_found;
 index_of(Item, [Item|_], Index) -> Index;
 index_of(Item, [_|Tl], Index) -> index_of(Item, Tl, Index+1).
 
+sendMassagesRoutine(MainNodePid) ->
+  try
+    receive after 3000  -> % 3 seconds
+      gen_server:cast(MainNodePid, {sendMassage}),
+      sendMassagesRoutine(MainNodePid)
+    end
+  catch
+    _ : _ -> sendMassagesRoutine(MainNodePid)
+  end.
 
-
-%updateETS(GuiPid)->
-%  receive
-%  after  1000 div ?RefreshRate -> gen_statem:cast(GuiPid, {refresh, ets:tab2list(etsElements)})
-%  end,
-%  refreshtimer(GuiPid).
+sendDataToGui()->
+  try
+    receive after 2000  -> % 2 seconds
+      io:format("Send to GUI - etsElements: ~p ~n", [ets:tab2list(etsElements)]),
+      sendDataToGui()
+    end
+  catch
+    _ : _ -> sendDataToGui()
+  end.
 
 test() -> EtsList = ets:tab2list(etsElements), EtsList.

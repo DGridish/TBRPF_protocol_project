@@ -12,7 +12,7 @@
 -behaviour(gen_server).
 
 %% API
--export([start_link/0]).
+-export([start_link/1]).
 
 %% gen_server callbacks
 -export([init/1, handle_call/3, handle_cast/2, handle_info/2, terminate/2,
@@ -20,17 +20,17 @@
 
 -define(SERVER, ?MODULE).
 
--record(protocolTBRPF_state, {}).
+-record(protocolTBRPF_state, {neighbors, elementPid, diGraph}).
 
 %%%===================================================================
 %%% API
 %%%===================================================================
 
 %% @doc Spawns the server and registers the local name (unique)
--spec(start_link() ->
+-spec(start_link(ElementPid::atom()) ->
   {ok, Pid :: pid()} | ignore | {error, Reason :: term()}).
-start_link() ->
-  gen_server:start_link({local, ?SERVER}, ?MODULE, [], []).
+start_link(ElementPid) ->
+  gen_server:start_link(?MODULE, [ElementPid], []).
 
 %%%===================================================================
 %%% gen_server callbacks
@@ -41,8 +41,9 @@ start_link() ->
 -spec(init(Args :: term()) ->
   {ok, State :: #protocolTBRPF_state{}} | {ok, State :: #protocolTBRPF_state{}, timeout() | hibernate} |
   {stop, Reason :: term()} | ignore).
-init([]) ->
-  {ok, #protocolTBRPF_state{}}.
+init([ElementPid]) -> io:format("TBRPF init: ~p ~n", [self()]),
+  DiGraph = digraph:new(),
+  {ok, #protocolTBRPF_state{elementPid = ElementPid, diGraph = DiGraph}}.
 
 %% @private
 %% @doc Handling call messages

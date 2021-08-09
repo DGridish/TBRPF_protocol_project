@@ -19,9 +19,9 @@
   code_change/3]).
 
 -define(SERVER, ?MODULE).
--define(MAX_SPEED, 100).    % m/s
+-define(MAX_SPEED, 30).    % m/s
 -define(updateEtsTimer, 1). % per second
--record(elementNode_state, {elementPid, parentPid, quarter, location, direction, speed, time}).
+-record(elementNode_state, {elementPid, parentPid, quarter, location, direction, speed, time, tbrpf}).
 
 %%%===================================================================
 %%% API
@@ -49,18 +49,19 @@ start_link([ParentNode, Quarter, {NewLocation, Speed, Direction, Time}]) ->
   {ok, State :: #elementNode_state{}} | {ok, State :: #elementNode_state{}, timeout() | hibernate} |
   {stop, Reason :: term()} | ignore).
 init([ParentNode, Quarter, {NewLocation, NewSpeed, NewDirection, NewTime}]) -> io:format("Element init: ~p ~n", [self()]),
+  TBRPF = protocolTBRPF:start_link(self()),
   ElementPid = self(),
   if {NewLocation, NewSpeed, NewDirection, NewTime} == {0, 0, 0, 0} ->
     [Location, Direction, Speed] = setSpeedAndDirection(Quarter),
     gen_server:cast(ParentNode, {signMeUp, ElementPid, Location}),                                                      % Update the parent node on its existence
   {ok, #elementNode_state{elementPid = ElementPid, parentPid = ParentNode, quarter = Quarter,
-    location = Location, direction = Direction, speed = Speed, time = erlang:system_time(millisecond)}};
+    location = Location, direction = Direction, speed = Speed, time = erlang:system_time(millisecond), tbrpf = TBRPF}};
 
   true -> gen_server:cast(ParentNode, {signMeUp, ElementPid, NewLocation}),
     {ok, #elementNode_state{elementPid = ElementPid, parentPid = ParentNode, quarter = Quarter,
-    location = NewLocation, direction = NewDirection, speed = NewSpeed, time = NewTime}}
+    location = NewLocation, direction = NewDirection, speed = NewSpeed, time = NewTime, tbrpf = TBRPF}}
   end.
-  % TODO protocolTBRPF start_link - spawn(protocolTBRPF, start_link, [[??, ??]])
+
 
 %% @private
 %% @doc Handling call messages
@@ -93,11 +94,11 @@ handle_cast({makeMovement}, State = #elementNode_state{}) ->
 
     offTheMap -> % billiard table movement
       gen_server:cast(State#elementNode_state.parentPid, {updateElement, self(), NewLocation}),
-      if
+      if % TODO What happens if you cross both boundaries?
         NewX < 0 -> NewDirection = (2 * 270 - State#elementNode_state.direction) rem 360;
-        NewX > 2000 -> NewDirection = (180 - State#elementNode_state.direction) rem 360;
+        NewX > 2000 -> NewDirection = (180 + State#elementNode_state.direction) rem 360;
         NewY < 0 -> NewDirection = (360 - State#elementNode_state.direction) rem 360;
-        NewY > 2000 -> NewDirection = (180 - State#elementNode_state.direction) rem 360;
+        NewY > 2000 -> NewDirection = (180 + State#elementNode_state.direction) rem 360;
         true -> NewDirection = OLdDirection
       end,
       io:format("PID, OLdDirection, NewDirection, OldQuarter, NewQuarter : ~p ~n", [[self(), OLdDirection, NewDirection, OldQuarter, NewQuarter]]),
@@ -109,6 +110,22 @@ handle_cast({makeMovement}, State = #elementNode_state{}) ->
       gen_server:cast(self(), {deleteElement}),
       {noreply, State#elementNode_state{quarter = NewQuarter, location = NewLocation, time = NewTime}}
   end;
+
+handle_cast({sendMsg, FromElement, ToElement, Data}, State = #elementNode_state{}) ->
+  TBRPF = State#elementNode_state.tbrpf,
+  Path = gen_server:call(TBRPF, {findPath, ToElement}),
+
+  {noreply, State};
+
+handle_cast({sendMassageDirectly, ToElement, Data}, State = #elementNode_state{}) ->
+  MyPid = self(),
+  gen_server:cast(ToElement, {msgFromOtherElement, MyPid, Data}),
+  {noreply, State};
+
+handle_cast({msgFromOtherElement, FromPid, Data}, State = #elementNode_state{}) ->
+  MyPid = self(),
+  io:format("Thanks ~p ! I got this data: ~p ~n", [FromPid, Data]),
+  {noreply, State};
 
 handle_cast({deleteElement}, State = #elementNode_state{}) -> %TODO How to completely delete an element
   {stop, shutdown, State};
@@ -179,9 +196,9 @@ calcMovement(State) ->
 checkNewLocation([X,Y]) ->
   if
     ((X =< 0) or (X >= 2000) or (Y =< 0) or (Y >= 2000)) -> offTheMap;
-    ((X > 0) and (X < 1000) and (Y > 0) and (Y < 1000)) -> 1;
-    ((X > 1000) and (X < 2000) and (Y > 0) and (Y < 1000)) -> 2;
-    ((X > 0) and (X < 1000) and (Y > 1000) and (Y < 2000)) -> 3;
-    ((X > 1000) and (X < 2000) and (Y > 1000) and (Y < 2000)) -> 4;
-    true -> io:format("1111111111111111111111111111111 ~p ~n", [[X,Y]])
+    ((X > 0) and (X =< 1000) and (Y > 0) and (Y =< 1000)) -> 1;
+    ((X >= 1000) and (X < 2000) and (Y > 0) and (Y =< 1000)) -> 2;
+    ((X > 0) and (X < 1000) and (Y >= 1000) and (Y < 2000)) -> 3;
+    ((X >= 1000) and (X < 2000) and (Y >= 1000) and (Y < 2000)) -> 4;
+    true -> io:format("checkNewLocation Bug ~p ~n", [[X,Y]])
   end.
