@@ -59,6 +59,10 @@ init([QNodes, QAreas, NUM_OF_ELEM, MainNode]) ->
   {noreply, NewState :: #qNode_state{}, timeout() | hibernate} |
   {stop, Reason :: term(), Reply :: term(), NewState :: #qNode_state{}} |
   {stop, Reason :: term(), NewState :: #qNode_state{}}).
+handle_call({sendYourElementList}, _From, State = #qNode_state{}) ->
+  ElementList = ets:tab2list(etsLocation),
+{reply, ElementList, State};
+
 handle_call(_Request, _From, State = #qNode_state{}) ->
   {reply, ok, State}.
 
@@ -101,17 +105,24 @@ handle_cast({allParameters, _Parameters}, State = #qNode_state{}) ->
   % TODO send parameters - Re-creation of elements with new parameters or Updating existing elements and creating additional elements
 {noreply, State};
 
-handle_cast({giveMeElementList, ElementPid, []}, State = #qNode_state{}) -> io:format("QNode giveMeElementList1: ~p ~n", [self()]),
+handle_cast({giveMeElementList, ElementPid, []}, State = #qNode_state{}) ->
   FullList = ets:tab2list(etsLocation),
   gen_server:cast(ElementPid, {takeElementList, FullList}),
   {noreply, State};
 
-handle_cast({giveMeElementList, _ElementPid, HowToAskList}, State = #qNode_state{}) -> io:format("QNode giveMeElementList1: ~p ~n", [self()]),
-  %_MyQpid = self(),
-  _FullList = ets:tab2list(etsLocation),
-  _PidList = gen_server:call(State#qNode_state.mainNode, {howAreThey, HowToAskList}),
+handle_cast({giveMeElementList, ElementPid, HowToAskList}, State = #qNode_state{}) ->
+  try
+    NodeAndPidList = gen_server:call(State#qNode_state.mainNode, {howAreThey, HowToAskList}),
+    OtherElement = [gen_server:call(Pid, {sendYourElementList}) || {_Node, Pid} <- NodeAndPidList],
+    MyElements = ets:tab2list(etsLocation),
+    AllElement = MyElements ++ OtherElement,
+    gen_server:cast(ElementPid, {takeElementList, AllElement}),
+    io:format("qNode giveMeElementList: ~p ~n", [[ElementPid, HowToAskList, NodeAndPidList, OtherElement, MyElements, AllElement]]),
+    {noreply, State}
+  catch
+      A:B  -> io:format("qNode giveMeElementList Error: ~p ~n", [[A,B]])
+  end;
 
-  {noreply, State};
 
 handle_cast({sendMassageToElenemt, FromElement, ToQPid, ToElement, Data}, State = #qNode_state{}) ->
   MyQpid = self(),

@@ -20,8 +20,9 @@
 
 -define(SERVER, ?MODULE).
 -define(MAX_SPEED, 30).    % m/s
--define(UPDATE_ETS_TIMER, 1). % per second
--define(RADIOS, 300).
+-define(MOVEMENT_TIMER, 1). % per second
+-define(NEIGHBORS_TIMER, 5). % per second
+-define(RADIOS, 500).
 -record(elementNode_state, {elementPid, parentPid, quarter, location, direction, speed, time, neighbors, diGraph}).
 
 %%%===================================================================
@@ -33,12 +34,13 @@
   {ok, Pid :: pid()} | ignore | {error, Reason :: term()}).
 start_link([ParentNode, Quarter]) ->
   {ok, ElementPid} = gen_server:start_link(?MODULE, [ParentNode, Quarter, {0, 0, 0, 0}], []),
-  spawn(fun()->updateEtsTimer(ElementPid) end);
+  spawn(fun()->movementTimer(ElementPid) end),
+  spawn(fun()->neighborsTimer(ElementPid) end);
 
 start_link([ParentNode, Quarter, {NewLocation, Speed, Direction, Time}]) ->
   {ok, ElementPid} = gen_server:start_link( ?MODULE, [ParentNode, Quarter, {NewLocation, Speed, Direction, Time}], []),
-  spawn(fun()->updateEtsTimer(ElementPid) end).
-
+  spawn(fun()->movementTimer(ElementPid) end),
+  spawn(fun()->neighborsTimer(ElementPid) end).
 
 %%%===================================================================
 %%% gen_server callbacks
@@ -133,7 +135,7 @@ handle_cast({getNeighborsList}, State = #elementNode_state{}) ->
              (X > 1000 - ?RADIOS) and Y < 2000 and (Y > 1000 + ?RADIOS) -> gen_server:cast(MyQPid, {giveMeElementList, self(), [4]});
              (X > 1000 - ?RADIOS) and (Y < 1000 + ?RADIOS) -> gen_server:cast(MyQPid, {giveMeElementList, self(), [1, 2, 4]});
              true -> gen_server:cast(MyQPid, {giveMeElementList, self(), []})
-           end;
+           end,io:format("ElementNode getNeighborsList: ~p ~n", [[Quarter,X,Y]]);
     4 ->   if
              (X < 1000 + ?RADIOS) and X < 2000 and (Y < 1000 + ?RADIOS) -> gen_server:cast(MyQPid, {giveMeElementList, self(), [2]});
              (X > 1000 - ?RADIOS) and Y < 2000 and (Y > 1000 + ?RADIOS) -> gen_server:cast(MyQPid, {giveMeElementList, self(), [3]});
@@ -141,7 +143,6 @@ handle_cast({getNeighborsList}, State = #elementNode_state{}) ->
              true -> gen_server:cast(MyQPid, {giveMeElementList, self(), []})
            end
   end,
-  io:format("ElementNode getNeighborsList: ~p ~n", [[MyQPid, {X, Y}, Quarter]]),
   {noreply, State};
 
 handle_cast({takeElementList, FullList}, State = #elementNode_state{}) ->
@@ -216,23 +217,31 @@ code_change(_OldVsn, State = #elementNode_state{}, _Extra) ->
 %%%===================================================================
 setSpeedAndDirection(Quarter) ->
   case Quarter of
-    1 -> Location = {rand:uniform(200), rand:uniform(200)};   % 1 -> Location = {rand:uniform(1000), rand:uniform(1000)};
-    2 -> Location = {1000 + rand:uniform(1000), rand:uniform(1000)};
-    3 -> Location = {rand:uniform(1000), 1000 + rand:uniform(1000)};
-    4 -> Location = {1000 + rand:uniform(1000), 1000 + rand:uniform(1000)}
+    1 -> Location = {rand:uniform(1000), rand:uniform(1000)};   % 1 -> Location = {rand:uniform(1000), rand:uniform(1000)};
+    2 -> Location = {1000 + rand:uniform(150), rand:uniform(150)};    %2 -> Location = {1000 + rand:uniform(1000), rand:uniform(1000)};
+    3 -> Location = {rand:uniform(1000), 1000 + rand:uniform(1000)};    % 3 -> Location = {rand:uniform(1000), 1000 + rand:uniform(1000)};
+    4 -> Location = {1000 + rand:uniform(150), 1000 + rand:uniform(150)} %  4 -> Location = {1000 + rand:uniform(1000), 1000 + rand:uniform(1000)}
     end,
   Direction = 45,    % degrees                     % Direction = rand:uniform(360),
   Speed = rand:uniform(?MAX_SPEED), % m/s
   [Location, Direction, Speed].
 
-updateEtsTimer(ElementPid) ->
-  WaitTime = 1000 * ?UPDATE_ETS_TIMER,
+movementTimer(ElementPid) ->
+  WaitTime = 1000 * ?MOVEMENT_TIMER,
   receive
     _ ->  doNothing
   after WaitTime -> % milliseconds
     gen_server:cast(ElementPid,{makeMovement}),
+    movementTimer(ElementPid)
+  end.
+
+neighborsTimer(ElementPid) ->
+  WaitTime = 1000 * ?NEIGHBORS_TIMER,
+  receive
+    _ ->  doNothing
+  after WaitTime -> % milliseconds
     gen_server:cast(ElementPid,{getNeighborsList}),
-    updateEtsTimer(ElementPid)
+    neighborsTimer(ElementPid)
   end.
 
 calcMovement(State) ->

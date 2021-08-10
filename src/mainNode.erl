@@ -19,7 +19,7 @@
   code_change/3]).
 
 -define(SERVER, ?MODULE).
--define(NUM_OF_ELEMENTS, 16).
+-define(NUM_OF_ELEMENTS, 4).
 -define(sendMassageTimer, 1). % per 5 seconds
 %-define(RefreshRate, 100).
 
@@ -74,6 +74,11 @@ init([QNodes, QAreas]) ->
   {noreply, NewState :: #mainNode_state{}, timeout() | hibernate} |
   {stop, Reason :: term(), Reply :: term(), NewState :: #mainNode_state{}} |
   {stop, Reason :: term(), NewState :: #mainNode_state{}}).
+handle_call({howAreThey, QuarterNumbers}, _From, State = #mainNode_state{}) ->
+  Temp = [ets:match(etsQs,{Key,'$1'}) || Key <- QuarterNumbers],
+  PidsList = clean(Temp),
+  {reply, PidsList, State};
+
 handle_call(_Request, _From, State = #mainNode_state{}) ->
   {reply, ok, State}.
 
@@ -184,10 +189,15 @@ index_of(_, [], _)  -> not_found;
 index_of(Item, [Item|_], Index) -> Index;
 index_of(Item, [_|Tl], Index) -> index_of(Item, Tl, Index+1).
 
+clean([H|T]) -> [X] = H, cleanAcc(T, X).
+
+cleanAcc([], List) -> List;
+cleanAcc([H|T], List) -> [X] = H, cleanAcc(T, (List++X)).
+
 sendMassagesRoutine(MainNodePid) ->
   try
     receive after 3000  -> % 3 seconds
-      gen_server:cast(MainNodePid, {sendMassage}),
+      %gen_server:cast(MainNodePid, {sendMassage}),
       sendMassagesRoutine(MainNodePid)
     end
   catch
@@ -204,5 +214,7 @@ sendDataToGui()->
   catch
     _ : _ -> sendDataToGui()
   end.
+
+
 
 test() -> EtsList = ets:tab2list(etsElements), EtsList.
