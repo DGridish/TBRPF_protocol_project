@@ -91,7 +91,6 @@ handle_cast({allParameters, Parameters}, State = #mainNode_state{}) ->   % Param
 
 handle_cast({addQ, QNode, QPid, Quarter}, State = #mainNode_state{}) ->
   ets:insert(etsQs, {Quarter, {QNode, QPid}}),
-  io:format("Send to GUI - etsQs: ~p ~n", [ets:tab2list(etsQs)]),
   {noreply, State};
 
 handle_cast({addElement, QPid, ElementPid, Location}, State = #mainNode_state{}) ->
@@ -121,11 +120,11 @@ handle_cast({sendMassage}, State = #mainNode_state{}) ->
   To = ets:last(etsElements),
   {FromQPid, FromElement} = From,
   {ToQPid, ToElement} = To,
-  gen_server:cast(FromQPid, {sendMassage, FromElement, ToQPid, ToElement, Data}),
+  gen_server:cast(FromElement, {sendMassage, ToElement, Data}),
   io:format("sendMassageF ~p ~n", [[FromQPid, FromElement, ToQPid, ToElement, Data]]),
 {noreply, State};
 
-handle_cast({qNodeDown, Node}, State = #mainNode_state{}) ->
+handle_cast({qNodeDown, _Node}, State = #mainNode_state{}) ->
 % TODO Transfer all the elements of the fallen node to another node
 {noreply, State};
 
@@ -177,7 +176,6 @@ manageQNodesLoop(MainNode)->
   receive
   % {nodedown,Node} -> gen_server:cast(MainNode, {qNodeDown, Node}),                                                    %{nodedown,q4@dgridish}
     Test -> io:format("Main manageQNodesLoop: ~p ~n", [Test])
-
   end,
   manageQNodesLoop(MainNode).
 
@@ -199,6 +197,7 @@ sendMassagesRoutine(MainNodePid) ->
 sendDataToGui()->
   try
     receive after 2000  -> % 2 seconds
+      io:format("Send to GUI - etsQs: ~p ~n", [ets:tab2list(etsQs)]),
       io:format("Send to GUI - etsElements: ~p ~n", [ets:tab2list(etsElements)]),
       sendDataToGui()
     end

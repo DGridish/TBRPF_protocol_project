@@ -97,15 +97,27 @@ handle_cast({createElement, NewLocation, Speed, Direction, Time}, State = #qNode
   spawn(elementNode, start_link, [[self(), State#qNode_state.quarter, {NewLocation, Speed, Direction, Time}]]),
   {noreply, State};
 
-handle_cast({allParameters, Parameters}, State = #qNode_state{}) ->
+handle_cast({allParameters, _Parameters}, State = #qNode_state{}) ->
   % TODO send parameters - Re-creation of elements with new parameters or Updating existing elements and creating additional elements
 {noreply, State};
 
-handle_cast({sendMassage, FromElement, ToQPid, ToElement, Data}, State = #qNode_state{}) ->
+handle_cast({giveMeElementList, ElementPid, []}, State = #qNode_state{}) ->
+  FullList = ets:tab2list(etsLocation),
+  gen_server:cast(ElementPid, {takeElementList, FullList}),
+  {noreply, State};
+
+handle_cast({giveMeElementList, _ElementPid, HowToAskList}, State = #qNode_state{}) ->
+  %_MyQpid = self(),
+  _FullList = ets:tab2list(etsLocation),
+  _PidList = gen_server:call(State#qNode_state.mainNode, {howAreThey, HowToAskList}),
+
+  {noreply, State};
+
+handle_cast({sendMassageToElenemt, FromElement, ToQPid, ToElement, Data}, State = #qNode_state{}) ->
   MyQpid = self(),
   if
     ToQPid == MyQpid -> gen_server:cast(FromElement, {sendMassageDirectly, ToElement, Data});
-    true -> gen_server:cast(FromElement, {sendMassageViaQNode, ToElement, Data})
+    true -> gen_server:cast(FromElement, {sendMassageViaQNode, ToQPid, ToElement, Data})
   end,
   {noreply, State};
 

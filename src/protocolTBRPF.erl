@@ -19,6 +19,7 @@
   code_change/3]).
 
 -define(SERVER, ?MODULE).
+-define(UPDATE_NEIGHBORS_TIMER, 5).
 
 -record(protocolTBRPF_state, {neighbors, elementPid, diGraph}).
 
@@ -30,7 +31,8 @@
 -spec(start_link(ElementPid::atom()) ->
   {ok, Pid :: pid()} | ignore | {error, Reason :: term()}).
 start_link(ElementPid) ->
-  gen_server:start_link(?MODULE, [ElementPid], []).
+  gen_server:start_link(?MODULE, [ElementPid], []),
+  spawn(fun()->updateNeighborsTimer(ElementPid) end).
 
 %%%===================================================================
 %%% gen_server callbacks
@@ -41,9 +43,9 @@ start_link(ElementPid) ->
 -spec(init(Args :: term()) ->
   {ok, State :: #protocolTBRPF_state{}} | {ok, State :: #protocolTBRPF_state{}, timeout() | hibernate} |
   {stop, Reason :: term()} | ignore).
-init([ElementPid]) -> io:format("TBRPF init: ~p ~n", [self()]),
-  DiGraph = digraph:new(),
-  {ok, #protocolTBRPF_state{elementPid = ElementPid, diGraph = DiGraph}}.
+init([ElementPid]) ->
+  DiGraph = digraph:new(), % buildDigraph(),
+  {ok, #protocolTBRPF_state{neighbors = [], elementPid = ElementPid, diGraph = DiGraph}}.
 
 %% @private
 %% @doc Handling call messages
@@ -55,6 +57,11 @@ init([ElementPid]) -> io:format("TBRPF init: ~p ~n", [self()]),
   {noreply, NewState :: #protocolTBRPF_state{}, timeout() | hibernate} |
   {stop, Reason :: term(), Reply :: term(), NewState :: #protocolTBRPF_state{}} |
   {stop, Reason :: term(), NewState :: #protocolTBRPF_state{}}).
+handle_call({findPath, ToElement}, FromPid, State = #protocolTBRPF_state{}) ->
+  Path = digraph:get_short_path(State#protocolTBRPF_state.diGraph, FromPid, ToElement),
+  io:format("TBRPF findPath Path: ~p ~n", [Path]),
+  {reply, Path, State};
+
 handle_call(_Request, _From, State = #protocolTBRPF_state{}) ->
   {reply, ok, State}.
 
@@ -64,8 +71,13 @@ handle_call(_Request, _From, State = #protocolTBRPF_state{}) ->
   {noreply, NewState :: #protocolTBRPF_state{}} |
   {noreply, NewState :: #protocolTBRPF_state{}, timeout() | hibernate} |
   {stop, Reason :: term(), NewState :: #protocolTBRPF_state{}}).
+handle_cast({takeElementList, FullList}, State = #protocolTBRPF_state{}) ->
+  io:format("TBRPF takeElementList Path: ~p ~n", [FullList]),
+  {noreply, State};
+
 handle_cast(_Request, State = #protocolTBRPF_state{}) ->
   {noreply, State}.
+
 
 %% @private
 %% @doc Handling all non call/cast messages
@@ -97,3 +109,25 @@ code_change(_OldVsn, State = #protocolTBRPF_state{}, _Extra) ->
 %%%===================================================================
 %%% Internal functions
 %%%===================================================================
+%%buildDigraph(DiGraph, []) -> connectDiGraph(DiGraph);
+%%buildDigraph(DiGraph, [H|T])->
+%%  {{QPid, ElementPid},{X, Y}} = H,
+%%  ElementVertex = digraph:add_vertex(DiGraph, H, ElementPid),
+%%  buildDigraph(DiGraph, T).
+%%
+%%
+%%connectDiGraph(DiGraph) ->
+%%  AllVertices = digraph:vertices(DiGraph),
+%%  io:format("DiGraph: ~p ~n", [DiGraph]),
+%%  io:format("AllVertices: ~p ~n", [AllVertices]),
+%%  DiGraph.
+
+updateNeighborsTimer(ElementPid) ->
+  WaitTime = 1000 * ?UPDATE_NEIGHBORS_TIMER,
+  receive
+    _ ->  doNothing
+  after WaitTime -> % milliseconds
+    gen_server:cast(ElementPid, {giveMeNeighborsList}),
+    io:format("updateNeighborsTimer: ~n", []),
+    updateNeighborsTimer(ElementPid)
+  end.

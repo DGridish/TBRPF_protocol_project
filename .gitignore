@@ -1,0 +1,6 @@
+src/elementNode.beam
+src/mainNode.beam
+src/protocolTBRPF.beam
+src/qNode.beam
+src/tests.beam
+src/tests.erl

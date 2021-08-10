@@ -1,16 +1,16 @@
-erl -sname master -setcookie aaa
+erl -sname main -setcookie aaa
 
-erl -sname slave1 -setcookie aaa
-erl -sname slave2 -setcookie aaa
-erl -sname slave3 -setcookie aaa
-erl -sname slave4 -setcookie aaa
+erl -sname q1 -setcookie aaa
+erl -sname q2 -setcookie aaa
+erl -sname q3 -setcookie aaa
+erl -sname q4 -setcookie aaa
 
 cd("/home/dgridish/IdeaProjects/TBRPF_Protocol/src").
-c(masterNode).
-c(slaveNode).
+c(mainNode).
+c(qNode).
 c(elementNode).
+c(protocolTBRPF).
 
-masterNode:start_link(['slave1@dgridish', 'slave2@dgridish', 'slave3@dgridish', 'slave4@dgridish'],[1, 2, 3, 4]).
+mainNode:start_link(['q1@dgridish', 'q2@dgridish', 'q3@dgridish', 'q4@dgridish'],[1, 2, 3, 4]).
 
-net_adm:ping('slave2@dgridish').
-
+net_adm:ping('q2@dgridish').

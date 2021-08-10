@@ -20,7 +20,8 @@
 
 -define(SERVER, ?MODULE).
 -define(MAX_SPEED, 30).    % m/s
--define(updateEtsTimer, 1). % per second
+-define(UPDATE_ETS_TIMER, 1). % per second
+-define(RADIOS, 300).
 -record(elementNode_state, {elementPid, parentPid, quarter, location, direction, speed, time, tbrpf}).
 
 %%%===================================================================
@@ -86,7 +87,7 @@ handle_cast({makeMovement}, State = #elementNode_state{}) ->
   OldQuarter = State#elementNode_state.quarter,
   OLdDirection = State#elementNode_state.direction,
   [NewX, NewY, NewTime] = calcMovement(State),
-  NewLocation = [NewX, NewY],
+  NewLocation = {NewX, NewY},                                       % TODO tuple
   NewQuarter = checkNewLocation(NewLocation),
   case NewQuarter of
     OldQuarter ->  gen_server:cast(State#elementNode_state.parentPid, {updateElement, self(), NewLocation}),
@@ -111,20 +112,61 @@ handle_cast({makeMovement}, State = #elementNode_state{}) ->
       {noreply, State#elementNode_state{quarter = NewQuarter, location = NewLocation, time = NewTime}}
   end;
 
-handle_cast({sendMsg, FromElement, ToElement, Data}, State = #elementNode_state{}) ->
+handle_cast({giveMeNeighborsList}, State = #elementNode_state{}) ->
+  MyQPid = State#elementNode_state.parentPid,
+  {X, Y} = State#elementNode_state.location,
+  Quarter = State#elementNode_state.quarter,
+  case Quarter of
+    1 ->   if
+             (X > 1000 - ?RADIOS) and Y > 0 and (Y < 1000 - ?RADIOS) -> gen_server:cast(MyQPid, {giveMeElementList, self(), [2]});
+             X > 0 and (X < 1000 - ?RADIOS) and (Y > 1000 - ?RADIOS) -> gen_server:cast(MyQPid, {giveMeElementList, self(), [3]});
+             (X > 1000 - ?RADIOS) and (Y > 1000 - ?RADIOS) -> gen_server:cast(MyQPid, {giveMeElementList, self(), [2, 3, 4]});
+             true -> gen_server:cast(MyQPid, {giveMeElementList, self(), []})
+           end;
+    2 ->   if
+             (X > 1000 + ?RADIOS) and X < 2000 and (Y > 1000 - ?RADIOS) -> gen_server:cast(MyQPid, {giveMeElementList, self(), [4]});
+             (X < 1000 + ?RADIOS) and Y > 0 and (Y < 1000 - ?RADIOS) -> gen_server:cast(MyQPid, {giveMeElementList, self(), [1]});
+             (X < 1000 + ?RADIOS) and (Y > 1000 - ?RADIOS) -> gen_server:cast(MyQPid, {giveMeElementList, self(), [1, 3, 4]});
+             true -> gen_server:cast(MyQPid, {giveMeElementList, self(), []})
+           end;
+    3 ->   if
+             X > 0 and (X < 1000 - ?RADIOS) and (Y < 1000 + ?RADIOS) -> gen_server:cast(MyQPid, {giveMeElementList, self(), [1]});
+             (X > 1000 - ?RADIOS) and Y < 2000 and (Y > 1000 + ?RADIOS) -> gen_server:cast(MyQPid, {giveMeElementList, self(), [4]});
+             (X > 1000 - ?RADIOS) and (Y < 1000 + ?RADIOS) -> gen_server:cast(MyQPid, {giveMeElementList, self(), [1, 2, 4]});
+             true -> gen_server:cast(MyQPid, {giveMeElementList, self(), []})
+           end;
+    4 ->   if
+             (X < 1000 + ?RADIOS) and X < 2000 and (Y < 1000 + ?RADIOS) -> gen_server:cast(MyQPid, {giveMeElementList, self(), [2]});
+             (X > 1000 - ?RADIOS) and Y < 2000 and (Y > 1000 + ?RADIOS) -> gen_server:cast(MyQPid, {giveMeElementList, self(), [3]});
+             (X < 1000 + ?RADIOS) and (Y < 1000 + ?RADIOS) -> gen_server:cast(MyQPid, {giveMeElementList, self(), [1, 2, 3]});
+             true -> gen_server:cast(MyQPid, {giveMeElementList, self(), []})
+           end
+  end,
+  io:format("updateNeighborsTimer: ~p ~n", [[MyQPid, {X, Y}, Quarter]]),
+  {noreply, State};
+
+handle_cast({takeElementList, FullList}, State = #elementNode_state{}) ->
+  TBRPF = State#elementNode_state.tbrpf,
+  gen_server:cast(TBRPF, {takeElementList, FullList}),
+{noreply, State};
+
+handle_cast({sendMassage, ToElement, Data}, State = #elementNode_state{}) ->
+  MyPid = self(),
   TBRPF = State#elementNode_state.tbrpf,
   Path = gen_server:call(TBRPF, {findPath, ToElement}),
-
+  io:format("elementNode sendMassage Path: ~p ~n", [Path]),
+  if
+    Path == [] -> io:format("There is no path ~n", []);
+    true -> [H|T] = Path, gen_server:cast(H, {msgFromOtherElement, MyPid, ToElement, T, Data})
+  end,
   {noreply, State};
 
-handle_cast({sendMassageDirectly, ToElement, Data}, State = #elementNode_state{}) ->
+handle_cast({msgFromOtherElement, FromElement, ToElement, Path, Data}, State = #elementNode_state{}) ->
   MyPid = self(),
-  gen_server:cast(ToElement, {msgFromOtherElement, MyPid, Data}),
-  {noreply, State};
-
-handle_cast({msgFromOtherElement, FromPid, Data}, State = #elementNode_state{}) ->
-  MyPid = self(),
-  io:format("Thanks ~p ! I got this data: ~p ~n", [FromPid, Data]),
+  if
+    MyPid == ToElement -> io:format("Thanks ~p ! I got this data: ~p ~n", [FromElement, Data]);
+    true -> [H|T] = Path, gen_server:cast(H, {msgFromOtherElement, FromElement, ToElement, T, Data})
+  end,
   {noreply, State};
 
 handle_cast({deleteElement}, State = #elementNode_state{}) -> %TODO How to completely delete an element
@@ -165,17 +207,17 @@ code_change(_OldVsn, State = #elementNode_state{}, _Extra) ->
 %%%===================================================================
 setSpeedAndDirection(Quarter) ->
   case Quarter of
-    1 -> Location = [rand:uniform(1000), rand:uniform(1000)];
-    2 -> Location = [1000 + rand:uniform(1000), rand:uniform(1000)];
-    3 -> Location = [rand:uniform(1000), 1000 + rand:uniform(1000)];
-    4 -> Location = [1000 + rand:uniform(1000), 1000 + rand:uniform(1000)]
+    1 -> Location = {rand:uniform(1000), rand:uniform(1000)};
+    2 -> Location = {1000 + rand:uniform(1000), rand:uniform(1000)};
+    3 -> Location = {rand:uniform(1000), 1000 + rand:uniform(1000)};
+    4 -> Location = {1000 + rand:uniform(1000), 1000 + rand:uniform(1000)}
     end,
   Direction = rand:uniform(360),    % degrees
   Speed = rand:uniform(?MAX_SPEED), % m/s
   [Location, Direction, Speed].
 
 updateEtsTimer(ElementPid) ->
-  WaitTime = 1000 div ?updateEtsTimer,
+  WaitTime = 1000 * ?UPDATE_ETS_TIMER,
   receive
     _ ->  doNothing
   after WaitTime -> % milliseconds
@@ -184,7 +226,7 @@ updateEtsTimer(ElementPid) ->
   end.
 
 calcMovement(State) ->
-  [OldX, OldY] = State#elementNode_state.location,
+  {OldX, OldY} = State#elementNode_state.location,
   Direction = State#elementNode_state.direction,
   Speed = State#elementNode_state.speed,
   NewTime = erlang:system_time(millisecond),
@@ -193,7 +235,7 @@ calcMovement(State) ->
   NewY = round(OldY + math:sin(Direction * math:pi() / 180) * Speed * (MovementTime / 1000)),
   [NewX, NewY, NewTime].
 
-checkNewLocation([X,Y]) ->
+checkNewLocation({X,Y}) ->
   if
     ((X =< 0) or (X >= 2000) or (Y =< 0) or (Y >= 2000)) -> offTheMap;
     ((X > 0) and (X =< 1000) and (Y > 0) and (Y =< 1000)) -> 1;
