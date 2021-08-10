@@ -22,7 +22,7 @@
 -define(MAX_SPEED, 30).    % m/s
 -define(UPDATE_ETS_TIMER, 1). % per second
 -define(RADIOS, 300).
--record(elementNode_state, {elementPid, parentPid, quarter, location, direction, speed, time, tbrpf}).
+-record(elementNode_state, {elementPid, parentPid, quarter, location, direction, speed, time, neighbors, diGraph}).
 
 %%%===================================================================
 %%% API
@@ -36,7 +36,7 @@ start_link([ParentNode, Quarter]) ->
   spawn(fun()->updateEtsTimer(ElementPid) end);
 
 start_link([ParentNode, Quarter, {NewLocation, Speed, Direction, Time}]) ->
-  {ok, ElementPid} = gen_server:start_link(?MODULE, [ParentNode, Quarter, {NewLocation, Speed, Direction, Time}], []),
+  {ok, ElementPid} = gen_server:start_link( ?MODULE, [ParentNode, Quarter, {NewLocation, Speed, Direction, Time}], []),
   spawn(fun()->updateEtsTimer(ElementPid) end).
 
 
@@ -49,18 +49,17 @@ start_link([ParentNode, Quarter, {NewLocation, Speed, Direction, Time}]) ->
 -spec(init(Args :: term()) ->
   {ok, State :: #elementNode_state{}} | {ok, State :: #elementNode_state{}, timeout() | hibernate} |
   {stop, Reason :: term()} | ignore).
-init([ParentNode, Quarter, {NewLocation, NewSpeed, NewDirection, NewTime}]) -> io:format("Element init: ~p ~n", [self()]),
-  TBRPF = protocolTBRPF:start_link(self()),
+init([ParentNode, Quarter, {NewLocation, NewSpeed, NewDirection, NewTime}]) ->
   ElementPid = self(),
   if {NewLocation, NewSpeed, NewDirection, NewTime} == {0, 0, 0, 0} ->
     [Location, Direction, Speed] = setSpeedAndDirection(Quarter),
     gen_server:cast(ParentNode, {signMeUp, ElementPid, Location}),                                                      % Update the parent node on its existence
   {ok, #elementNode_state{elementPid = ElementPid, parentPid = ParentNode, quarter = Quarter,
-    location = Location, direction = Direction, speed = Speed, time = erlang:system_time(millisecond), tbrpf = TBRPF}};
+    location = Location, direction = Direction, speed = Speed, time = erlang:system_time(millisecond)}};
 
   true -> gen_server:cast(ParentNode, {signMeUp, ElementPid, NewLocation}),
     {ok, #elementNode_state{elementPid = ElementPid, parentPid = ParentNode, quarter = Quarter,
-    location = NewLocation, direction = NewDirection, speed = NewSpeed, time = NewTime, tbrpf = TBRPF}}
+    location = NewLocation, direction = NewDirection, speed = NewSpeed, time = NewTime}}
   end.
 
 
@@ -102,17 +101,17 @@ handle_cast({makeMovement}, State = #elementNode_state{}) ->
         NewY > 2000 -> NewDirection = (180 + State#elementNode_state.direction) rem 360;
         true -> NewDirection = OLdDirection
       end,
-      io:format("PID, OLdDirection, NewDirection, OldQuarter, NewQuarter : ~p ~n", [[self(), OLdDirection, NewDirection, OldQuarter, NewQuarter]]),
+      %io:format("PID, OLdDirection, NewDirection, OldQuarter, NewQuarter : ~p ~n", [[self(), OLdDirection, NewDirection, OldQuarter, NewQuarter]]),
       {noreply, State#elementNode_state{location = NewLocation, direction = NewDirection, time = NewTime}};
 
-    NewQuarter -> io:format("NewQuarter : ~p ~n", [[self(),NewQuarter]]),
+    NewQuarter -> % io:format("NewQuarter : ~p ~n", [[self(),NewQuarter]]),
       gen_server:cast(State#elementNode_state.parentPid, {moveToOtherQuarter, State#elementNode_state.elementPid, NewQuarter, NewLocation,
         State#elementNode_state.speed, State#elementNode_state.direction, State#elementNode_state.time}),
       gen_server:cast(self(), {deleteElement}),
       {noreply, State#elementNode_state{quarter = NewQuarter, location = NewLocation, time = NewTime}}
   end;
 
-handle_cast({giveMeNeighborsList}, State = #elementNode_state{}) ->
+handle_cast({getNeighborsList}, State = #elementNode_state{}) ->
   MyQPid = State#elementNode_state.parentPid,
   {X, Y} = State#elementNode_state.location,
   Quarter = State#elementNode_state.quarter,
@@ -142,24 +141,34 @@ handle_cast({giveMeNeighborsList}, State = #elementNode_state{}) ->
              true -> gen_server:cast(MyQPid, {giveMeElementList, self(), []})
            end
   end,
-  io:format("updateNeighborsTimer: ~p ~n", [[MyQPid, {X, Y}, Quarter]]),
+  io:format("ElementNode getNeighborsList: ~p ~n", [[MyQPid, {X, Y}, Quarter]]),
   {noreply, State};
 
 handle_cast({takeElementList, FullList}, State = #elementNode_state{}) ->
-  TBRPF = State#elementNode_state.tbrpf,
-  gen_server:cast(TBRPF, {takeElementList, FullList}),
+  io:format("ElementNode takeElementList: ~p ~n", [[self(), FullList]]),
+  %AllInRadius = fineElementsInRadius(FullList),
+
+  %Path = digraph:get_short_path(diGraph, FromPid, ToElement),
+  %io:format("findPath Path: ~p ~n", [Path]),
+
+
 {noreply, State};
 
-handle_cast({sendMassage, ToElement, Data}, State = #elementNode_state{}) ->
-  MyPid = self(),
-  TBRPF = State#elementNode_state.tbrpf,
-  Path = gen_server:call(TBRPF, {findPath, ToElement}),
-  io:format("elementNode sendMassage Path: ~p ~n", [Path]),
-  if
-    Path == [] -> io:format("There is no path ~n", []);
-    true -> [H|T] = Path, gen_server:cast(H, {msgFromOtherElement, MyPid, ToElement, T, Data})
-  end,
-  {noreply, State};
+%%handle_cast({sendMassage, ToElement, Data}, State = #elementNode_state{}) ->
+%%  MyPid = self(),
+%%  try
+%%    Path = gen_server:call(Tbrpf, {findPath, ToElement}),
+%%    io:format("elementNode sendMassage Path: ~p ~n", [Path]),
+%%    if
+%%      Path == [] -> io:format("There is no path ~n", []);
+%%      true -> [H|T] = Path, gen_server:cast(H, {msgFromOtherElement, MyPid, ToElement, T, Data})
+%%    end,
+%%    {noreply, State}
+%%  catch
+%%      X:Y  -> io:format("elementNode sendMassage Error: ~p ~n", [[X,Y]]),
+%%      {noreply, State}
+%%  end;
+
 
 handle_cast({msgFromOtherElement, FromElement, ToElement, Path, Data}, State = #elementNode_state{}) ->
   MyPid = self(),
@@ -207,12 +216,12 @@ code_change(_OldVsn, State = #elementNode_state{}, _Extra) ->
 %%%===================================================================
 setSpeedAndDirection(Quarter) ->
   case Quarter of
-    1 -> Location = {rand:uniform(1000), rand:uniform(1000)};
+    1 -> Location = {rand:uniform(200), rand:uniform(200)};   % 1 -> Location = {rand:uniform(1000), rand:uniform(1000)};
     2 -> Location = {1000 + rand:uniform(1000), rand:uniform(1000)};
     3 -> Location = {rand:uniform(1000), 1000 + rand:uniform(1000)};
     4 -> Location = {1000 + rand:uniform(1000), 1000 + rand:uniform(1000)}
     end,
-  Direction = rand:uniform(360),    % degrees
+  Direction = 45,    % degrees                     % Direction = rand:uniform(360),
   Speed = rand:uniform(?MAX_SPEED), % m/s
   [Location, Direction, Speed].
 
@@ -222,6 +231,7 @@ updateEtsTimer(ElementPid) ->
     _ ->  doNothing
   after WaitTime -> % milliseconds
     gen_server:cast(ElementPid,{makeMovement}),
+    gen_server:cast(ElementPid,{getNeighborsList}),
     updateEtsTimer(ElementPid)
   end.
 
@@ -244,3 +254,16 @@ checkNewLocation({X,Y}) ->
     ((X >= 1000) and (X < 2000) and (Y >= 1000) and (Y < 2000)) -> 4;
     true -> io:format("checkNewLocation Bug ~p ~n", [[X,Y]])
   end.
+
+%%buildDigraph(DiGraph, []) -> connectDiGraph(DiGraph);
+%%buildDigraph(DiGraph, [H|T])->
+%%  {{QPid, ElementPid},{X, Y}} = H,
+%%  ElementVertex = digraph:add_vertex(DiGraph, H, ElementPid),
+%%  buildDigraph(DiGraph, T).
+%%
+%%
+%%connectDiGraph(DiGraph) ->
+%%  AllVertices = digraph:vertices(DiGraph),
+%%  io:format("DiGraph: ~p ~n", [DiGraph]),
+%%  io:format("AllVertices: ~p ~n", [AllVertices]),
+%%  DiGraph.

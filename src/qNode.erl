@@ -101,12 +101,12 @@ handle_cast({allParameters, _Parameters}, State = #qNode_state{}) ->
   % TODO send parameters - Re-creation of elements with new parameters or Updating existing elements and creating additional elements
 {noreply, State};
 
-handle_cast({giveMeElementList, ElementPid, []}, State = #qNode_state{}) ->
+handle_cast({giveMeElementList, ElementPid, []}, State = #qNode_state{}) -> io:format("QNode giveMeElementList1: ~p ~n", [self()]),
   FullList = ets:tab2list(etsLocation),
   gen_server:cast(ElementPid, {takeElementList, FullList}),
   {noreply, State};
 
-handle_cast({giveMeElementList, _ElementPid, HowToAskList}, State = #qNode_state{}) ->
+handle_cast({giveMeElementList, _ElementPid, HowToAskList}, State = #qNode_state{}) -> io:format("QNode giveMeElementList1: ~p ~n", [self()]),
   %_MyQpid = self(),
   _FullList = ets:tab2list(etsLocation),
   _PidList = gen_server:call(State#qNode_state.mainNode, {howAreThey, HowToAskList}),

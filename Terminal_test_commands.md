@@ -9,8 +9,8 @@ cd("/home/dgridish/IdeaProjects/TBRPF_Protocol/src").
 c(mainNode).
 c(qNode).
 c(elementNode).
-c(protocolTBRPF).
 
-mainNode:start_link(['q1@dgridish', 'q2@dgridish', 'q3@dgridish', 'q4@dgridish'],[1, 2, 3, 4]).
+mainNode:start_link(['slave1@dgridish', 'slave2@dgridish', 'slave3@dgridish', 'slave4@dgridish'],[1, 2, 3, 4]).
 
 net_adm:ping('q2@dgridish').
+

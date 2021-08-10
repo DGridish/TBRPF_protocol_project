@@ -19,7 +19,7 @@
   code_change/3]).
 
 -define(SERVER, ?MODULE).
--define(NUM_OF_ELEMENTS, 4).
+-define(NUM_OF_ELEMENTS, 16).
 -define(sendMassageTimer, 1). % per 5 seconds
 %-define(RefreshRate, 100).
 
@@ -51,7 +51,7 @@ init([QNodes, QAreas]) ->
   ets:new(etsMessages,[ordered_set, public, named_table, {read_concurrency, true}, {write_concurrency, true}]),         % Create massages table
 
   % TODO send massages between elements
-  io:format("MainNodePid ~p ~n", [MainNodePid]),
+  %io:format("MainNodePid ~p ~n", [MainNodePid]),
   spawn(fun()->sendMassagesRoutine(MainNodePid) end),
 
   % TODO spawn GUI
@@ -121,7 +121,7 @@ handle_cast({sendMassage}, State = #mainNode_state{}) ->
   {FromQPid, FromElement} = From,
   {ToQPid, ToElement} = To,
   gen_server:cast(FromElement, {sendMassage, ToElement, Data}),
-  io:format("sendMassageF ~p ~n", [[FromQPid, FromElement, ToQPid, ToElement, Data]]),
+  io:format("MainNode sendMassage ~p ~n", [[FromQPid, FromElement, ToQPid, ToElement, Data]]),
 {noreply, State};
 
 handle_cast({qNodeDown, _Node}, State = #mainNode_state{}) ->
