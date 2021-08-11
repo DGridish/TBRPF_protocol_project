@@ -153,8 +153,8 @@ handle_cast({getNeighborsList}, State = #elementNode_state{}) ->
 
 handle_cast({takeElementList, FullList}, State = #elementNode_state{}) ->
   MyLocation = State#elementNode_state.location,
-  AllInRadius = fineElementsInRadius(FullList, MyLocation),
-  io:format("ElementNode takeElementList: ~p ~n", [[self(), FullList, AllInRadius]]),
+  %AllInRadius = findElementsInRadius(FullList, MyLocation),
+  %io:format("ElementNode takeElementList: ~p ~n", [[self(), FullList, AllInRadius]]),
 
   %Path = digraph:get_short_path(diGraph, FromPid, ToElement),
   %io:format("findPath Path: ~p ~n", [Path]),
@@ -271,20 +271,22 @@ checkNewLocation({X,Y}) ->
     true -> io:format("checkNewLocation Bug ~p ~n", [[X,Y]])
   end.
 
-fineElementsInRadius([{ElementPid, {X, Y}}|T], {MyX, MyY}) -> io:format("fineElementsInRadius1 ~p ~n", [[[{ElementPid, {X, Y}}|T], {MyX, MyY}]]),
+findElementsInRadius([], _MyLocation) -> [];
+findElementsInRadius([H|T], {MyX, MyY}) ->
+  [{ElementPid, {X, Y}}] = H,
   Distance = math:sqrt(math:pow((X - MyX), 2) + math:pow((Y - MyY), 2)),
   if
-    Distance =< ?RADIUS -> io:format("fineElementsInRadius2 ~p ~n", [[T, {MyX, MyY}, [ElementPid]]]), fineElementsInRadiusAcc(T, {MyX, MyY}, [ElementPid]);
-    true -> fineElementsInRadius(T, {MyX, MyY})
+    Distance =< ?RADIUS -> findElementsInRadiusAcc(T, {MyX, MyY}, [ElementPid]);
+    true ->  findElementsInRadius(T, {MyX, MyY})
   end.
 
-fineElementsInRadiusAcc([], _MyLocation, InRadiusList) -> InRadiusList;
-
-fineElementsInRadiusAcc([{ElementPid, {X, Y}}|T], {MyX, MyY}, InRadiusList) -> io:format("fineElementsInRadiusAcc ~n", []),
+findElementsInRadiusAcc([], _MyLocation, InRadiusList) -> InRadiusList;
+findElementsInRadiusAcc([H|T], {MyX, MyY}, InRadiusList) ->
+  [{ElementPid, {X, Y}}] = H,
   Distance = math:sqrt(math:pow((X - MyX), 2) + math:pow((Y - MyY), 2)),
   if
-    Distance =< ?RADIUS -> fineElementsInRadiusAcc(T, {MyX, MyY}, InRadiusList ++ ElementPid);
-    true -> fineElementsInRadius(T, {MyX, MyY})
+    Distance =< ?RADIUS -> findElementsInRadiusAcc(T, {MyX, MyY}, lists:append(InRadiusList, ElementPid));
+    true -> findElementsInRadius(T, {MyX, MyY})
   end.
 
 

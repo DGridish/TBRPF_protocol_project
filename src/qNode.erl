@@ -94,7 +94,10 @@ handle_cast({deleteElement, Element}, State = #qNode_state{}) ->
 handle_cast({moveToOtherQuarter, ElementPid, NewQuarter, NewLocation, Speed, Direction, Time}, State = #qNode_state{}) ->
   gen_server:cast(State#qNode_state.mainNode, {moveToOtherQuarter, self(), ElementPid, NewQuarter, NewLocation, Speed, Direction, Time}),
   ets:delete(etsLocation, ElementPid),
-  gen_server:cast(self(), {createElement, NewLocation, Speed, Direction, Time}),
+  NodeAndPid = gen_server:call(State#qNode_state.mainNode, {howAreThey, [NewQuarter]}),
+  [{_QNode, QPid}] = NodeAndPid,
+  gen_server:cast(QPid, {createElement, NewLocation, Speed, Direction, Time}),
+
   {noreply, State};
 
 handle_cast({createElement, NewLocation, Speed, Direction, Time}, State = #qNode_state{}) ->
@@ -106,7 +109,7 @@ handle_cast({allParameters, _Parameters}, State = #qNode_state{}) ->
 {noreply, State};
 
 handle_cast({giveMeElementList, ElementPid, []}, State = #qNode_state{}) ->
-  FullList = ets:tab2list(etsLocation),
+  FullList = [ets:tab2list(etsLocation)],
   gen_server:cast(ElementPid, {takeElementList, FullList}),
   {noreply, State};
 
@@ -114,7 +117,7 @@ handle_cast({giveMeElementList, ElementPid, HowToAskList}, State = #qNode_state{
   try
     NodeAndPidList = gen_server:call(State#qNode_state.mainNode, {howAreThey, HowToAskList}),
     OtherElement = [gen_server:call(Pid, {sendYourElementList}) || {_Node, Pid} <- NodeAndPidList],
-    MyElements = ets:tab2list(etsLocation),
+    MyElements = [ets:tab2list(etsLocation)],
     AllElement = MyElements ++ OtherElement,
     gen_server:cast(ElementPid, {takeElementList, AllElement}),
     %io:format("qNode giveMeElementList: ~p ~n", [[ElementPid, HowToAskList, NodeAndPidList, OtherElement, MyElements, AllElement]]),
