@@ -22,7 +22,7 @@
 -define(MAX_SPEED, 30).    % m/s
 -define(MOVEMENT_TIMER, 1). % per second
 -define(NEIGHBORS_TIMER, 5). % per second
--define(RADIOS, 500).
+-define(RADIUS, 500).
 -record(elementNode_state, {elementPid, parentPid, quarter, location, direction, speed, time, neighbors, diGraph}).
 
 %%%===================================================================
@@ -114,40 +114,47 @@ handle_cast({makeMovement}, State = #elementNode_state{}) ->
   end;
 
 handle_cast({getNeighborsList}, State = #elementNode_state{}) ->
-  MyQPid = State#elementNode_state.parentPid,
-  {X, Y} = State#elementNode_state.location,
-  Quarter = State#elementNode_state.quarter,
-  case Quarter of
-    1 ->   if
-             (X > 1000 - ?RADIOS) and Y > 0 and (Y < 1000 - ?RADIOS) -> gen_server:cast(MyQPid, {giveMeElementList, self(), [2]});
-             X > 0 and (X < 1000 - ?RADIOS) and (Y > 1000 - ?RADIOS) -> gen_server:cast(MyQPid, {giveMeElementList, self(), [3]});
-             (X > 1000 - ?RADIOS) and (Y > 1000 - ?RADIOS) -> gen_server:cast(MyQPid, {giveMeElementList, self(), [2, 3, 4]});
-             true -> gen_server:cast(MyQPid, {giveMeElementList, self(), []})
-           end;
-    2 ->   if
-             (X > 1000 + ?RADIOS) and X < 2000 and (Y > 1000 - ?RADIOS) -> gen_server:cast(MyQPid, {giveMeElementList, self(), [4]});
-             (X < 1000 + ?RADIOS) and Y > 0 and (Y < 1000 - ?RADIOS) -> gen_server:cast(MyQPid, {giveMeElementList, self(), [1]});
-             (X < 1000 + ?RADIOS) and (Y > 1000 - ?RADIOS) -> gen_server:cast(MyQPid, {giveMeElementList, self(), [1, 3, 4]});
-             true -> gen_server:cast(MyQPid, {giveMeElementList, self(), []})
-           end;
-    3 ->   if
-             X > 0 and (X < 1000 - ?RADIOS) and (Y < 1000 + ?RADIOS) -> gen_server:cast(MyQPid, {giveMeElementList, self(), [1]});
-             (X > 1000 - ?RADIOS) and Y < 2000 and (Y > 1000 + ?RADIOS) -> gen_server:cast(MyQPid, {giveMeElementList, self(), [4]});
-             (X > 1000 - ?RADIOS) and (Y < 1000 + ?RADIOS) -> gen_server:cast(MyQPid, {giveMeElementList, self(), [1, 2, 4]});
-             true -> gen_server:cast(MyQPid, {giveMeElementList, self(), []})
-           end,io:format("ElementNode getNeighborsList: ~p ~n", [[Quarter,X,Y]]);
-    4 ->   if
-             (X < 1000 + ?RADIOS) and X < 2000 and (Y < 1000 + ?RADIOS) -> gen_server:cast(MyQPid, {giveMeElementList, self(), [2]});
-             (X > 1000 - ?RADIOS) and Y < 2000 and (Y > 1000 + ?RADIOS) -> gen_server:cast(MyQPid, {giveMeElementList, self(), [3]});
-             (X < 1000 + ?RADIOS) and (Y < 1000 + ?RADIOS) -> gen_server:cast(MyQPid, {giveMeElementList, self(), [1, 2, 3]});
-             true -> gen_server:cast(MyQPid, {giveMeElementList, self(), []})
-           end
-  end,
-  {noreply, State};
+  try
+    MyQPid = State#elementNode_state.parentPid,
+    {X, Y} = State#elementNode_state.location,
+    Quarter = State#elementNode_state.quarter,
+    case Quarter of
+      1 ->   if
+               (X > 1000 - ?RADIUS) and (Y > 0) and (Y < 1000 - ?RADIUS) -> gen_server:cast(MyQPid, {giveMeElementList, self(), [2]});
+               (X > 0) and (X < 1000 - ?RADIUS) and (Y > 1000 - ?RADIUS) -> gen_server:cast(MyQPid, {giveMeElementList, self(), [3]});
+               (X > 1000 - ?RADIUS) and (Y > 1000 - ?RADIUS) -> gen_server:cast(MyQPid, {giveMeElementList, self(), [2, 3, 4]});
+               true -> gen_server:cast(MyQPid, {giveMeElementList, self(), []})
+             end;
+      2 ->   if
+               (X > 1000 + ?RADIUS) and (X < 2000) and (Y > 1000 - ?RADIUS) -> gen_server:cast(MyQPid, {giveMeElementList, self(), [4]});
+               (X < 1000 + ?RADIUS) and (Y > 0) and (Y < 1000 - ?RADIUS) -> gen_server:cast(MyQPid, {giveMeElementList, self(), [1]});
+               (X < 1000 + ?RADIUS) and (Y > 1000 - ?RADIUS) -> gen_server:cast(MyQPid, {giveMeElementList, self(), [1, 3, 4]});
+               true -> gen_server:cast(MyQPid, {giveMeElementList, self(), []})
+             end;
+      3 ->   if
+               (X > 0) and (X < 1000 - ?RADIUS) and (Y < 1000 + ?RADIUS) -> gen_server:cast(MyQPid, {giveMeElementList, self(), [1]});
+               (X > 1000 - ?RADIUS) and (Y < 2000) and (Y > 1000 + ?RADIUS) -> gen_server:cast(MyQPid, {giveMeElementList, self(), [4]});
+               (X > 1000 - ?RADIUS) and (Y < 1000 + ?RADIUS) -> gen_server:cast(MyQPid, {giveMeElementList, self(), [1, 2, 4]});
+               true -> gen_server:cast(MyQPid, {giveMeElementList, self(), []})
+             end; %Temp =  (X > 0 and (X < 1000 - ?RADIOS) and (Y < 1000 + ?RADIOS)),
+
+      4 ->   if
+               (X > 1000 + ?RADIUS) and (X < 2000) and (Y < 1000 + ?RADIUS) -> gen_server:cast(MyQPid, {giveMeElementList, self(), [2]});
+               (X < 1000 + ?RADIUS) and (Y < 2000) and (Y > 1000 + ?RADIUS) -> gen_server:cast(MyQPid, {giveMeElementList, self(), [3]});
+               (X < 1000 + ?RADIUS) and (Y < 1000 + ?RADIUS) -> gen_server:cast(MyQPid, {giveMeElementList, self(), [1, 2, 3]});
+               true -> gen_server:cast(MyQPid, {giveMeElementList, self(), []})
+             end
+    end,
+    {noreply, State}
+  catch
+      A:B  -> io:format("ElementNode getNeighborsList Error: ~p ~n", [[A,B]])
+  end;
+
 
 handle_cast({takeElementList, FullList}, State = #elementNode_state{}) ->
-  io:format("ElementNode takeElementList: ~p ~n", [[self(), FullList]]),
-  %AllInRadius = fineElementsInRadius(FullList),
+  MyLocation = State#elementNode_state.location,
+  AllInRadius = fineElementsInRadius(FullList, MyLocation),
+  io:format("ElementNode takeElementList: ~p ~n", [[self(), FullList, AllInRadius]]),
 
   %Path = digraph:get_short_path(diGraph, FromPid, ToElement),
   %io:format("findPath Path: ~p ~n", [Path]),
@@ -217,10 +224,10 @@ code_change(_OldVsn, State = #elementNode_state{}, _Extra) ->
 %%%===================================================================
 setSpeedAndDirection(Quarter) ->
   case Quarter of
-    1 -> Location = {rand:uniform(1000), rand:uniform(1000)};   % 1 -> Location = {rand:uniform(1000), rand:uniform(1000)};
-    2 -> Location = {1000 + rand:uniform(150), rand:uniform(150)};    %2 -> Location = {1000 + rand:uniform(1000), rand:uniform(1000)};
-    3 -> Location = {rand:uniform(1000), 1000 + rand:uniform(1000)};    % 3 -> Location = {rand:uniform(1000), 1000 + rand:uniform(1000)};
-    4 -> Location = {1000 + rand:uniform(150), 1000 + rand:uniform(150)} %  4 -> Location = {1000 + rand:uniform(1000), 1000 + rand:uniform(1000)}
+    1 -> Location = {200 + rand:uniform(1000), 200 + rand:uniform(1000)};   % 1 -> Location = {rand:uniform(1000), rand:uniform(1000)};
+    2 -> Location = {1000 + rand:uniform(150), 200 + rand:uniform(150)};    % 2 -> Location = {1000 + rand:uniform(1000), rand:uniform(1000)};
+    3 -> Location = {200 + rand:uniform(1000), 1000 + rand:uniform(1000)};  % 3 -> Location = {rand:uniform(1000), 1000 + rand:uniform(1000)};
+    4 -> Location = {1000 + rand:uniform(150), 1000 + rand:uniform(150)}    % 4 -> Location = {1000 + rand:uniform(1000), 1000 + rand:uniform(1000)}
     end,
   Direction = 45,    % degrees                     % Direction = rand:uniform(360),
   Speed = rand:uniform(?MAX_SPEED), % m/s
@@ -263,6 +270,23 @@ checkNewLocation({X,Y}) ->
     ((X >= 1000) and (X < 2000) and (Y >= 1000) and (Y < 2000)) -> 4;
     true -> io:format("checkNewLocation Bug ~p ~n", [[X,Y]])
   end.
+
+fineElementsInRadius([{ElementPid, {X, Y}}|T], {MyX, MyY}) -> io:format("fineElementsInRadius1 ~p ~n", [[[{ElementPid, {X, Y}}|T], {MyX, MyY}]]),
+  Distance = math:sqrt(math:pow((X - MyX), 2) + math:pow((Y - MyY), 2)),
+  if
+    Distance =< ?RADIUS -> io:format("fineElementsInRadius2 ~p ~n", [[T, {MyX, MyY}, [ElementPid]]]), fineElementsInRadiusAcc(T, {MyX, MyY}, [ElementPid]);
+    true -> fineElementsInRadius(T, {MyX, MyY})
+  end.
+
+fineElementsInRadiusAcc([], _MyLocation, InRadiusList) -> InRadiusList;
+
+fineElementsInRadiusAcc([{ElementPid, {X, Y}}|T], {MyX, MyY}, InRadiusList) -> io:format("fineElementsInRadiusAcc ~n", []),
+  Distance = math:sqrt(math:pow((X - MyX), 2) + math:pow((Y - MyY), 2)),
+  if
+    Distance =< ?RADIUS -> fineElementsInRadiusAcc(T, {MyX, MyY}, InRadiusList ++ ElementPid);
+    true -> fineElementsInRadius(T, {MyX, MyY})
+  end.
+
 
 %%buildDigraph(DiGraph, []) -> connectDiGraph(DiGraph);
 %%buildDigraph(DiGraph, [H|T])->

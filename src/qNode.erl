@@ -117,10 +117,10 @@ handle_cast({giveMeElementList, ElementPid, HowToAskList}, State = #qNode_state{
     MyElements = ets:tab2list(etsLocation),
     AllElement = MyElements ++ OtherElement,
     gen_server:cast(ElementPid, {takeElementList, AllElement}),
-    io:format("qNode giveMeElementList: ~p ~n", [[ElementPid, HowToAskList, NodeAndPidList, OtherElement, MyElements, AllElement]]),
+    %io:format("qNode giveMeElementList: ~p ~n", [[ElementPid, HowToAskList, NodeAndPidList, OtherElement, MyElements, AllElement]]),
     {noreply, State}
   catch
-      A:B  -> io:format("qNode giveMeElementList Error: ~p ~n", [[A,B]])
+      A:B  -> io:format("qNode giveMeElementList Error: ~p ~n", [[A,B]]), {noreply, State}
   end;
 
 
