@@ -19,7 +19,7 @@
   code_change/3]).
 
 -define(SERVER, ?MODULE).
--define(NUM_OF_ELEMENTS, 4).
+-define(NUM_OF_ELEMENTS, 16).
 -define(sendMassageTimer, 1). % per 5 seconds
 %-define(RefreshRate, 100).
 

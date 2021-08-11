@@ -96,11 +96,15 @@ handle_cast({makeMovement}, State = #elementNode_state{}) ->
 
     offTheMap -> % billiard table movement
       gen_server:cast(State#elementNode_state.parentPid, {updateElement, self(), NewLocation}),
-      if % TODO What happens if you cross both boundaries?
-        NewX < 0 -> NewDirection = (2 * 270 - State#elementNode_state.direction) rem 360;
-        NewX > 2000 -> NewDirection = (180 + State#elementNode_state.direction) rem 360;
-        NewY < 0 -> NewDirection = (360 - State#elementNode_state.direction) rem 360;
-        NewY > 2000 -> NewDirection = (180 + State#elementNode_state.direction) rem 360;
+      if
+        (NewX < 0) and (NewY < 0) -> NewDirection = (180 + State#elementNode_state.direction) rem 360;
+        (NewX < 0) and (NewY > 2000) -> NewDirection = (180 + State#elementNode_state.direction) rem 360;
+        (NewX > 2000) and (NewY < 0) -> NewDirection = (180 + State#elementNode_state.direction) rem 360;
+        (NewX > 2000) and (NewY > 2000) -> NewDirection = (180 + State#elementNode_state.direction) rem 360;
+        (NewX < 0) -> NewDirection = (540 - State#elementNode_state.direction) rem 360;
+        (NewX > 2000) -> NewDirection = (540 + State#elementNode_state.direction) rem 360;
+        (NewY < 0) -> NewDirection = (360 - State#elementNode_state.direction) rem 360;
+        (NewY > 2000) -> NewDirection = (360 - State#elementNode_state.direction) rem 360;
         true -> NewDirection = OLdDirection
       end,
       %io:format("PID, OLdDirection, NewDirection, OldQuarter, NewQuarter : ~p ~n", [[self(), OLdDirection, NewDirection, OldQuarter, NewQuarter]]),
@@ -151,8 +155,9 @@ handle_cast({getNeighborsList}, State = #elementNode_state{}) ->
   end;
 
 
-handle_cast({takeElementList, FullList}, State = #elementNode_state{}) ->
+handle_cast({takeElementList, [FullList]}, State = #elementNode_state{}) ->
   MyLocation = State#elementNode_state.location,
+  %io:format("ElementNode takeElementList: ~p ~n", [[self(), FullList]]),
   %AllInRadius = findElementsInRadius(FullList, MyLocation),
   %io:format("ElementNode takeElementList: ~p ~n", [[self(), FullList, AllInRadius]]),
 
@@ -229,7 +234,7 @@ setSpeedAndDirection(Quarter) ->
     3 -> Location = {200 + rand:uniform(1000), 1000 + rand:uniform(1000)};  % 3 -> Location = {rand:uniform(1000), 1000 + rand:uniform(1000)};
     4 -> Location = {1000 + rand:uniform(150), 1000 + rand:uniform(150)}    % 4 -> Location = {1000 + rand:uniform(1000), 1000 + rand:uniform(1000)}
     end,
-  Direction = 45,    % degrees                     % Direction = rand:uniform(360),
+  Direction = rand:uniform(360),    % degrees
   Speed = rand:uniform(?MAX_SPEED), % m/s
   [Location, Direction, Speed].
 
@@ -271,22 +276,26 @@ checkNewLocation({X,Y}) ->
     true -> io:format("checkNewLocation Bug ~p ~n", [[X,Y]])
   end.
 
-findElementsInRadius([], _MyLocation) -> [];
+findElementsInRadius([[]], _MyLocation) -> [];
+findElementsInRadius([[]|T], MyLocation) -> findElementsInRadius(T, MyLocation);
 findElementsInRadius([H|T], {MyX, MyY}) ->
   [{ElementPid, {X, Y}}] = H,
   Distance = math:sqrt(math:pow((X - MyX), 2) + math:pow((Y - MyY), 2)),
+  io:format("findElementsInRadius ~p ~n", [T]),
   if
     Distance =< ?RADIUS -> findElementsInRadiusAcc(T, {MyX, MyY}, [ElementPid]);
     true ->  findElementsInRadius(T, {MyX, MyY})
   end.
 
-findElementsInRadiusAcc([], _MyLocation, InRadiusList) -> InRadiusList;
-findElementsInRadiusAcc([H|T], {MyX, MyY}, InRadiusList) ->
-  [{ElementPid, {X, Y}}] = H,
-  Distance = math:sqrt(math:pow((X - MyX), 2) + math:pow((Y - MyY), 2)),
+findElementsInRadiusAcc([], _MyLocation, InRadiusList) -> io:format("findElementsInRadiusAcc 1 ~p ~n", [[self(),InRadiusList]]), InRadiusList;
+findElementsInRadiusAcc([[]|T], MyLocation, InRadiusList) -> findElementsInRadiusAcc(T, MyLocation, InRadiusList);
+findElementsInRadiusAcc([H|T], {MyX, MyY}, InRadiusList) ->  io:format("findElementsInRadiusAcc 2 ~p ~n", [[self(),H]]),
+  [{ElementPid, {X, Y}}] = H,  io:format("findElementsInRadiusAcc 3 ~p ~n", [[self(),{ElementPid, {X, Y}}]]),
+  Distance = math:sqrt(math:pow((X - MyX), 2) + math:pow((Y - MyY), 2)),  io:format("findElementsInRadiusAcc 4 ~p ~n", [Distance]),
+  io:format("findElementsInRadiusAcc 5 ~p ~n", [[self(),T]]),
   if
     Distance =< ?RADIUS -> findElementsInRadiusAcc(T, {MyX, MyY}, lists:append(InRadiusList, ElementPid));
-    true -> findElementsInRadius(T, {MyX, MyY})
+    true -> findElementsInRadiusAcc(T, {MyX, MyY}, InRadiusList)
   end.
 
 
