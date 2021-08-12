@@ -21,7 +21,7 @@
 -define(SERVER, ?MODULE).
 -define(MAX_SPEED, 30).    % m/s
 -define(MOVEMENT_TIMER, 1). % per second
--define(NEIGHBORS_TIMER, 5). % per second
+-define(NEIGHBORS_TIMER, 1). % per second
 -define(RADIUS, 500).
 -record(elementNode_state, {elementPid, parentPid, quarter, location, direction, speed, time, neighbors, diGraph}).
 
@@ -53,17 +53,19 @@ start_link([ParentNode, Quarter, {NewLocation, Speed, Direction, Time}]) ->
   {stop, Reason :: term()} | ignore).
 init([ParentNode, Quarter, {NewLocation, NewSpeed, NewDirection, NewTime}]) ->
   ElementPid = self(),
+  DiGraph = digraph:new(),
+  digraph:add_vertex(DiGraph, ElementPid),
   if {NewLocation, NewSpeed, NewDirection, NewTime} == {0, 0, 0, 0} ->
     [Location, Direction, Speed] = setSpeedAndDirection(Quarter),
     gen_server:cast(ParentNode, {signMeUp, ElementPid, Location}),                                                      % Update the parent node on its existence
   {ok, #elementNode_state{elementPid = ElementPid, parentPid = ParentNode, quarter = Quarter,
-    location = Location, direction = Direction, speed = Speed, time = erlang:system_time(millisecond)}};
+    location = Location, direction = Direction, speed = Speed, time = erlang:system_time(millisecond),
+    neighbors = [], diGraph = DiGraph}};
 
   true -> gen_server:cast(ParentNode, {signMeUp, ElementPid, NewLocation}),
     {ok, #elementNode_state{elementPid = ElementPid, parentPid = ParentNode, quarter = Quarter,
-    location = NewLocation, direction = NewDirection, speed = NewSpeed, time = NewTime}}
+    location = NewLocation, direction = NewDirection, speed = NewSpeed, time = NewTime, neighbors = [], diGraph = DiGraph}}
   end.
-
 
 %% @private
 %% @doc Handling call messages
@@ -88,7 +90,7 @@ handle_cast({makeMovement}, State = #elementNode_state{}) ->
   OldQuarter = State#elementNode_state.quarter,
   OLdDirection = State#elementNode_state.direction,
   [NewX, NewY, NewTime] = calcMovement(State),
-  NewLocation = {NewX, NewY},                                       % TODO tuple
+  NewLocation = {NewX, NewY},
   NewQuarter = checkNewLocation(NewLocation),
   case NewQuarter of
     OldQuarter ->  gen_server:cast(State#elementNode_state.parentPid, {updateElement, self(), NewLocation}),
@@ -156,19 +158,26 @@ handle_cast({getNeighborsList}, State = #elementNode_state{}) ->
 
 
 handle_cast({takeElementList, [FullList]}, State = #elementNode_state{}) ->
+  MyPid = self(),
   MyLocation = State#elementNode_state.location,
-  %io:format("ElementNode takeElementList: ~p ~n", [[self(), FullList]]),
-  %AllInRadius = findElementsInRadius(FullList, MyLocation),
-  %io:format("ElementNode takeElementList: ~p ~n", [[self(), FullList, AllInRadius]]),
-
+  io:format("ElementNode takeElementList1: ~p ~n", [[self(), FullList]]),
+  AllInRadius = findElementsInRadius(FullList, MyLocation),
+  io:format("ElementNode takeElementList2: ~p ~n", [[self(), AllInRadius]]),
+  DiGraph = digraph:new(),
+  [digraph:add_vertex(DiGraph, Element) || Element <- AllInRadius],
+  [digraph:add_edge(DiGraph, MyPid, Element) || Element <- AllInRadius],
+  io:format("ElementNode DiGraph: ~p ~n", [[self(), DiGraph]]),
+  %[H|T] = AllInRadius,
+  %A = digraph:get_short_path(diGraph, MyPid, H),
+  %io:format("ElementNode get_short_path: ~p ~n", [A]),
   %Path = digraph:get_short_path(diGraph, FromPid, ToElement),
   %io:format("findPath Path: ~p ~n", [Path]),
+{noreply, State#elementNode_state{neighbors = AllInRadius, diGraph = DiGraph}};
 
-
-{noreply, State};
-
-%%handle_cast({sendMassage, ToElement, Data}, State = #elementNode_state{}) ->
-%%  MyPid = self(),
+handle_cast({sendMassage, ToElement, Data}, State = #elementNode_state{}) ->
+  MyPid = self(),
+  io:format("ElementNode sendMassage Got It: ~p ~n", [[MyPid, ToElement, Data]]),
+  {noreply, State};
 %%  try
 %%    Path = gen_server:call(Tbrpf, {findPath, ToElement}),
 %%    io:format("elementNode sendMassage Path: ~p ~n", [Path]),
@@ -248,7 +257,7 @@ movementTimer(ElementPid) ->
   end.
 
 neighborsTimer(ElementPid) ->
-  WaitTime = 1000 * ?NEIGHBORS_TIMER,
+  WaitTime = 1000 * (1 + rand:uniform(3)), %?NEIGHBORS_TIMER, % (1 + rand:uniform(5)), %
   receive
     _ ->  doNothing
   after WaitTime -> % milliseconds
@@ -276,27 +285,31 @@ checkNewLocation({X,Y}) ->
     true -> io:format("checkNewLocation Bug ~p ~n", [[X,Y]])
   end.
 
-findElementsInRadius([[]], _MyLocation) -> [];
-findElementsInRadius([[]|T], MyLocation) -> findElementsInRadius(T, MyLocation);
+findElementsInRadius([], _MyLocation) -> [];
 findElementsInRadius([H|T], {MyX, MyY}) ->
-  [{ElementPid, {X, Y}}] = H,
+  {ElementPid, {X, Y}} = H,
   Distance = math:sqrt(math:pow((X - MyX), 2) + math:pow((Y - MyY), 2)),
-  io:format("findElementsInRadius ~p ~n", [T]),
   if
-    Distance =< ?RADIUS -> findElementsInRadiusAcc(T, {MyX, MyY}, [ElementPid]);
-    true ->  findElementsInRadius(T, {MyX, MyY})
+    (ElementPid == self()) -> findElementsInRadius(T, {MyX, MyY});
+    true -> if
+              Distance =< ?RADIUS -> findElementsInRadiusAcc(T, {MyX, MyY}, [ElementPid]);
+              true ->  findElementsInRadius(T, {MyX, MyY})
+            end
+  end;
+findElementsInRadius(_,_) -> [].
+
+findElementsInRadiusAcc([], _MyLocation, InRadiusList) -> InRadiusList;
+findElementsInRadiusAcc([H|T], {MyX, MyY}, InRadiusList) ->
+  {ElementPid, {X, Y}} = H,
+  if
+    (ElementPid == self()) -> findElementsInRadiusAcc(T, {MyX, MyY}, InRadiusList);
+    true -> Distance = math:sqrt(math:pow((X - MyX), 2) + math:pow((Y - MyY), 2)),
+            if
+              Distance =< ?RADIUS -> findElementsInRadiusAcc(T, {MyX, MyY}, (InRadiusList ++ [ElementPid]));
+              true -> findElementsInRadiusAcc(T, {MyX, MyY}, InRadiusList)
+            end
   end.
 
-findElementsInRadiusAcc([], _MyLocation, InRadiusList) -> io:format("findElementsInRadiusAcc 1 ~p ~n", [[self(),InRadiusList]]), InRadiusList;
-findElementsInRadiusAcc([[]|T], MyLocation, InRadiusList) -> findElementsInRadiusAcc(T, MyLocation, InRadiusList);
-findElementsInRadiusAcc([H|T], {MyX, MyY}, InRadiusList) ->  io:format("findElementsInRadiusAcc 2 ~p ~n", [[self(),H]]),
-  [{ElementPid, {X, Y}}] = H,  io:format("findElementsInRadiusAcc 3 ~p ~n", [[self(),{ElementPid, {X, Y}}]]),
-  Distance = math:sqrt(math:pow((X - MyX), 2) + math:pow((Y - MyY), 2)),  io:format("findElementsInRadiusAcc 4 ~p ~n", [Distance]),
-  io:format("findElementsInRadiusAcc 5 ~p ~n", [[self(),T]]),
-  if
-    Distance =< ?RADIUS -> findElementsInRadiusAcc(T, {MyX, MyY}, lists:append(InRadiusList, ElementPid));
-    true -> findElementsInRadiusAcc(T, {MyX, MyY}, InRadiusList)
-  end.
 
 
 %%buildDigraph(DiGraph, []) -> connectDiGraph(DiGraph);

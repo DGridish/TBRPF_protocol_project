@@ -116,14 +116,16 @@ handle_cast({giveMeElementList, ElementPid, []}, State = #qNode_state{}) ->
 handle_cast({giveMeElementList, ElementPid, HowToAskList}, State = #qNode_state{}) ->
   try
     NodeAndPidList = gen_server:call(State#qNode_state.mainNode, {howAreThey, HowToAskList}),
-    OtherElement = [gen_server:call(Pid, {sendYourElementList}) || {_Node, Pid} <- NodeAndPidList],
-    MyElements = [ets:tab2list(etsLocation)],
+    OElement = [gen_server:call(Pid, {sendYourElementList}) || {_Node, Pid} <- NodeAndPidList],
+    OtherElement = toOneList(OElement),
+    MyElements = ets:tab2list(etsLocation),
     AllElement = MyElements ++ OtherElement,
     gen_server:cast(ElementPid, {takeElementList, AllElement}),
-    %io:format("qNode giveMeElementList: ~p ~n", [[ElementPid, HowToAskList, NodeAndPidList, OtherElement, MyElements, AllElement]]),
     {noreply, State}
   catch
-      A:B  -> io:format("qNode giveMeElementList Error: ~p ~n", [[A,B]]), {noreply, State}
+      A:B  ->  io:format("qNode giveMeElementList Error: ~p ~n", [[A,B,ElementPid]]),
+                gen_server:cast(ElementPid, {takeElementList, ets:tab2list(etsLocation)}),
+                {noreply, State}
   end;
 
 
@@ -178,4 +180,17 @@ spawnElementNodes(NUM_OF_ELEM, Quarter) ->
   ElementsNumbers = lists:seq(1, NUM_OF_ELEM div 4),
   [spawn(elementNode, start_link, [[QPid, Quarter]])|| _OneByOne <- ElementsNumbers].
 
+toOneList([[]]) -> [];
+toOneList([[]|T]) -> toOneList(T);
+toOneList([H|T]) ->
+  OneList = H,
+  %io:format("qNode toOneList: ~p ~n", [OneList]),
+  toOneListAcc(T, OneList).
 
+toOneListAcc([[]], OneList) -> OneList;
+toOneListAcc([[]|T], OneList) -> toOneListAcc(T,OneList);
+toOneListAcc([], OneList) -> OneList;
+toOneListAcc([H|T], List) ->
+  OneList = H ++ List,
+  %io:format("qNode toOneListAcc: ~p ~n", [OneList]),
+  toOneListAcc(T, OneList).

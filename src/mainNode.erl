@@ -19,7 +19,7 @@
   code_change/3]).
 
 -define(SERVER, ?MODULE).
--define(NUM_OF_ELEMENTS, 16).
+-define(NUM_OF_ELEMENTS, 40).
 -define(sendMassageTimer, 1). % per 5 seconds
 %-define(RefreshRate, 100).
 
@@ -196,7 +196,7 @@ cleanAcc([H|T], List) -> [X] = H, cleanAcc(T, (List++X)).
 
 sendMassagesRoutine(MainNodePid) ->
   try
-    receive after 3000  -> % 3 seconds
+    receive after 2000  -> % 2 seconds
       %gen_server:cast(MainNodePid, {sendMassage}),
       sendMassagesRoutine(MainNodePid)
     end
@@ -206,7 +206,7 @@ sendMassagesRoutine(MainNodePid) ->
 
 sendDataToGui()->
   try
-    receive after 2000  -> % 2 seconds
+    receive after 3000  -> % 2 seconds
       io:format("Send to GUI - etsQs: ~p ~n", [ets:tab2list(etsQs)]),
       io:format("Send to GUI - etsElements: ~p ~n", [ets:tab2list(etsElements)]),
       sendDataToGui()
