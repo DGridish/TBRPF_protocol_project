@@ -20,8 +20,8 @@
 
 -define(SERVER, ?MODULE).
 -define(MAX_SPEED, 30).    % m/s
--define(MOVEMENT_TIMER, 1). % per second
--define(NEIGHBORS_TIMER, 1). % per second
+-define(MOVEMENT_TIMER, 3). % 3 second
+-define(NEIGHBORS_TIMER, 3). % 3 second
 -define(RADIUS, 500).
 -record(elementNode_state, {elementPid, parentPid, quarter, location, direction, speed, time, neighbors, diGraph}).
 
@@ -99,14 +99,14 @@ handle_cast({makeMovement}, State = #elementNode_state{}) ->
     offTheMap -> % billiard table movement
       gen_server:cast(State#elementNode_state.parentPid, {updateElement, self(), NewLocation}),
       if
-        (NewX < 0) and (NewY < 0) -> NewDirection = (180 + State#elementNode_state.direction) rem 360;
-        (NewX < 0) and (NewY > 2000) -> NewDirection = (180 + State#elementNode_state.direction) rem 360;
-        (NewX > 2000) and (NewY < 0) -> NewDirection = (180 + State#elementNode_state.direction) rem 360;
-        (NewX > 2000) and (NewY > 2000) -> NewDirection = (180 + State#elementNode_state.direction) rem 360;
-        (NewX < 0) -> NewDirection = (540 - State#elementNode_state.direction) rem 360;
-        (NewX > 2000) -> NewDirection = (540 + State#elementNode_state.direction) rem 360;
-        (NewY < 0) -> NewDirection = (360 - State#elementNode_state.direction) rem 360;
-        (NewY > 2000) -> NewDirection = (360 - State#elementNode_state.direction) rem 360;
+        (NewX < 100) and (NewY < 100) -> NewDirection = (180 + State#elementNode_state.direction) rem 360;
+        (NewX < 100) and (NewY > 1900) -> NewDirection = (180 + State#elementNode_state.direction) rem 360;
+        (NewX > 1900) and (NewY < 100) -> NewDirection = (180 + State#elementNode_state.direction) rem 360;
+        (NewX > 1900) and (NewY > 1900) -> NewDirection = (180 + State#elementNode_state.direction) rem 360;
+        (NewX < 100) -> NewDirection = (540 - State#elementNode_state.direction) rem 360;
+        (NewX > 1900) -> NewDirection = (540 + State#elementNode_state.direction) rem 360;
+        (NewY < 100) -> NewDirection = (360 - State#elementNode_state.direction) rem 360;
+        (NewY > 1900) -> NewDirection = (360 - State#elementNode_state.direction) rem 360;
         true -> NewDirection = OLdDirection
       end,
       %io:format("PID, OLdDirection, NewDirection, OldQuarter, NewQuarter : ~p ~n", [[self(), OLdDirection, NewDirection, OldQuarter, NewQuarter]]),
@@ -156,27 +156,25 @@ handle_cast({getNeighborsList}, State = #elementNode_state{}) ->
       A:B  -> io:format("ElementNode getNeighborsList Error: ~p ~n", [[A,B]])
   end;
 
-
 handle_cast({takeElementList, [FullList]}, State = #elementNode_state{}) ->
-  MyPid = self(),
   MyLocation = State#elementNode_state.location,
   io:format("ElementNode takeElementList1: ~p ~n", [[self(), FullList]]),
   AllInRadius = findElementsInRadius(FullList, MyLocation),
   io:format("ElementNode takeElementList2: ~p ~n", [[self(), AllInRadius]]),
-  DiGraph = digraph:new(),
-  [digraph:add_vertex(DiGraph, Element) || Element <- AllInRadius],
-  [digraph:add_edge(DiGraph, MyPid, Element) || Element <- AllInRadius],
-  io:format("ElementNode DiGraph: ~p ~n", [[self(), DiGraph]]),
+{noreply, State#elementNode_state{neighbors = AllInRadius}};
+
+handle_cast({sendMassage, ToElement, Data}, State = #elementNode_state{}) ->
+  MyPid = self(),
+  io:format("ElementNode sendMassage Got It: ~p ~n", [[MyPid, ToElement, Data]]),
+  %DiGraph = digraph:new(),
+  %[digraph:add_vertex(DiGraph, Element) || Element <- AllInRadius],
+  %[digraph:add_edge(DiGraph, MyPid, Element) || Element <- AllInRadius],
+  %io:format("ElementNode DiGraph: ~p ~n", [[self(), DiGraph]]),
   %[H|T] = AllInRadius,
   %A = digraph:get_short_path(diGraph, MyPid, H),
   %io:format("ElementNode get_short_path: ~p ~n", [A]),
   %Path = digraph:get_short_path(diGraph, FromPid, ToElement),
   %io:format("findPath Path: ~p ~n", [Path]),
-{noreply, State#elementNode_state{neighbors = AllInRadius, diGraph = DiGraph}};
-
-handle_cast({sendMassage, ToElement, Data}, State = #elementNode_state{}) ->
-  MyPid = self(),
-  io:format("ElementNode sendMassage Got It: ~p ~n", [[MyPid, ToElement, Data]]),
   {noreply, State};
 %%  try
 %%    Path = gen_server:call(Tbrpf, {findPath, ToElement}),
@@ -238,10 +236,10 @@ code_change(_OldVsn, State = #elementNode_state{}, _Extra) ->
 %%%===================================================================
 setSpeedAndDirection(Quarter) ->
   case Quarter of
-    1 -> Location = {200 + rand:uniform(1000), 200 + rand:uniform(1000)};   % 1 -> Location = {rand:uniform(1000), rand:uniform(1000)};
-    2 -> Location = {1000 + rand:uniform(150), 200 + rand:uniform(150)};    % 2 -> Location = {1000 + rand:uniform(1000), rand:uniform(1000)};
-    3 -> Location = {200 + rand:uniform(1000), 1000 + rand:uniform(1000)};  % 3 -> Location = {rand:uniform(1000), 1000 + rand:uniform(1000)};
-    4 -> Location = {1000 + rand:uniform(150), 1000 + rand:uniform(150)}    % 4 -> Location = {1000 + rand:uniform(1000), 1000 + rand:uniform(1000)}
+    1 -> Location = {300 + rand:uniform(700), 300 + rand:uniform(700)};   % 1 -> Location = {rand:uniform(1000), rand:uniform(1000)};
+    2 -> Location = {1000 + rand:uniform(700), 300 + rand:uniform(700)};    % 2 -> Location = {1000 + rand:uniform(1000), rand:uniform(1000)};
+    3 -> Location = {300 + rand:uniform(700), 1000 + rand:uniform(700)};  % 3 -> Location = {rand:uniform(1000), 1000 + rand:uniform(1000)};
+    4 -> Location = {1000 + rand:uniform(700), 1000 + rand:uniform(700)}    % 4 -> Location = {1000 + rand:uniform(1000), 1000 + rand:uniform(1000)}
     end,
   Direction = rand:uniform(360),    % degrees
   Speed = rand:uniform(?MAX_SPEED), % m/s
@@ -257,11 +255,11 @@ movementTimer(ElementPid) ->
   end.
 
 neighborsTimer(ElementPid) ->
-  WaitTime = 1000 * (1 + rand:uniform(3)), %?NEIGHBORS_TIMER, % (1 + rand:uniform(5)), %
+  WaitTime = 1000 * ?NEIGHBORS_TIMER, % (1 + rand:uniform(5)), %
   receive
     _ ->  doNothing
   after WaitTime -> % milliseconds
-    gen_server:cast(ElementPid,{getNeighborsList}),
+    %gen_server:cast(ElementPid,{getNeighborsList}),
     neighborsTimer(ElementPid)
   end.
 

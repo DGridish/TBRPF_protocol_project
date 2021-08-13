@@ -101,6 +101,7 @@ handle_cast({moveToOtherQuarter, ElementPid, NewQuarter, NewLocation, Speed, Dir
   {noreply, State};
 
 handle_cast({createElement, NewLocation, Speed, Direction, Time}, State = #qNode_state{}) ->
+  %io:format("MainNode qNodeDown BackUpQPid ~p ~n", [NewLocation]),
   spawn(elementNode, start_link, [[self(), State#qNode_state.quarter, {NewLocation, Speed, Direction, Time}]]),
   {noreply, State};
 
@@ -127,7 +128,6 @@ handle_cast({giveMeElementList, ElementPid, HowToAskList}, State = #qNode_state{
                 gen_server:cast(ElementPid, {takeElementList, ets:tab2list(etsLocation)}),
                 {noreply, State}
   end;
-
 
 handle_cast({sendMassageToElenemt, FromElement, ToQPid, ToElement, Data}, State = #qNode_state{}) ->
   MyQpid = self(),

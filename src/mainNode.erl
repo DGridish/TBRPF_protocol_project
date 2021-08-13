@@ -19,8 +19,9 @@
   code_change/3]).
 
 -define(SERVER, ?MODULE).
--define(NUM_OF_ELEMENTS, 40).
+-define(NUM_OF_ELEMENTS, 12).
 -define(sendMassageTimer, 1). % per 5 seconds
+-define(MAX_SPEED, 30).
 %-define(RefreshRate, 100).
 
 -record(mainNode_state, {qNodes, qAreas}).
@@ -61,7 +62,7 @@ init([QNodes, QAreas]) ->
   % TODO pass parameters to q node or use default in qNode? What parameters?
 
   spawnQNodes(QNodes, QAreas, ?NUM_OF_ELEMENTS, init),                                                      % Spawn q nodes
-  spawn_link(fun() -> manageQNodes(QNodes, node()) end),                                                    % Monitor q nodes
+  spawn_link(fun() -> manageQNodes(QNodes, MainNodePid) end),                                                    % Monitor q nodes
   {ok, #mainNode_state{qNodes = QNodes, qAreas = QAreas}}.
 
 %% @private
@@ -129,8 +130,19 @@ handle_cast({sendMassage}, State = #mainNode_state{}) ->
   io:format("MainNode sendMassage ~p ~n", [[FromQPid, FromElement, ToQPid, ToElement, Data]]),
 {noreply, State};
 
-handle_cast({qNodeDown, _Node}, State = #mainNode_state{}) ->
-% TODO Transfer all the elements of the fallen node to another node
+handle_cast({qNodeDown, Node}, State = #mainNode_state{}) ->
+  EtsQsList = ets:tab2list(etsQs),
+  [QPid, QQuarterList] = howIsHe(Node, EtsQsList),
+  [ets:delete(etsQs, QQuarter) || QQuarter <- QQuarterList],
+  EtsElements = ets:tab2list(etsElements),
+  LocationList = giveMeLocationList(QPid, EtsElements),
+  Quarter = ets:first(etsQs),
+  [{_Quarter,{QNode,BackUpQPid}}] = ets:lookup(etsQs, Quarter),
+  [ets:insert(etsQs, {QQuarter, {QNode, BackUpQPid}}) || QQuarter <- QQuarterList],
+  Time = erlang:system_time(millisecond),
+  Direction = rand:uniform(360),
+  Speed = rand:uniform(?MAX_SPEED),
+  [gen_server:cast(BackUpQPid, {createElement, Location, Speed, Direction, Time}) || Location <- LocationList],
 {noreply, State};
 
 handle_cast(_Request, State = #mainNode_state{}) ->
@@ -172,17 +184,18 @@ spawnQNodes(QNodes, QAreas, NUM_OF_ELEM, init) -> [spawnQNodes(QNodes, QAreas, N
 spawnQNodes(QNodes, QAreas, NUM_OF_ELEM, Node) -> spawn(Node, qNode, start_link, [QNodes, QAreas, NUM_OF_ELEM, self()]).
 
 % Monitor all q nodes
-manageQNodes(QNodes, MainNode) ->
+manageQNodes(QNodes, MainNodePid) ->
   [erlang:monitor_node(Node, true) || Node <- QNodes],
-  manageQNodesLoop(MainNode).
+  manageQNodesLoop(MainNodePid).
 
 % Wait here for messages from q nodes
-manageQNodesLoop(MainNode)->
+manageQNodesLoop(MainNodePid)->
   receive
-  % {nodedown,Node} -> gen_server:cast(MainNode, {qNodeDown, Node}),                                                    %{nodedown,q4@dgridish}
-    Test -> io:format("Main manageQNodesLoop: ~p ~n", [Test])
+    {nodedown,Node} -> gen_server:cast(MainNodePid, {qNodeDown, Node});
+    _ -> donothing                            %{nodedown,q4@dgridish}
+    %Test -> io:format("Main manageQNodesLoop: ~p ~n", [Test])
   end,
-  manageQNodesLoop(MainNode).
+  manageQNodesLoop(MainNodePid).
 
 index_of(Item, List) -> index_of(Item, List, 1).
 index_of(_, [], _)  -> not_found;
@@ -193,6 +206,44 @@ clean([H|T]) -> [X] = H, cleanAcc(T, X).
 
 cleanAcc([], List) -> List;
 cleanAcc([H|T], List) -> [X] = H, cleanAcc(T, (List++X)).
+
+howIsHe(Node, [H|T]) ->
+  {QQuarter,{QNode,QPid}} = H,
+  if
+    Node == QNode -> howIsHeAcc(Node, T, [QPid, [QQuarter]]);
+    true -> howIsHe(Node, T)
+  end.
+
+howIsHeAcc(_Node, [], QuarterList) -> QuarterList;
+howIsHeAcc(Node, [H|T], [QPid, QuarterList]) ->
+  {QQuarter,{QNode,_QPid}} = H,
+  if
+    Node == QNode -> howIsHeAcc(Node, T, [QPid, QuarterList ++ [QQuarter]]);
+    true -> howIsHeAcc(Node, T, [QPid, QuarterList])
+  end.
+
+giveMeLocationList(_DownPid, []) -> [];
+giveMeLocationList(DownPid, [H|T]) ->
+  {{QPid, ElementPid}, Location} = H,
+  if
+    DownPid == QPid ->
+      ets:delete(etsElements, {DownPid, ElementPid}),
+      giveMeLocationListAcc(DownPid, T, [Location]);
+
+      %ets:delete(etsElements, {DownPid, ElementPid}); %{{<12672.106.0>,<12672.135.0>},{853,903}}
+    true -> giveMeLocationList(DownPid, T)
+  end.
+
+giveMeLocationListAcc(_DownPid, [], LocationList) -> LocationList;
+giveMeLocationListAcc(DownPid, [H|T], LocationList) ->
+  {{QPid, ElementPid}, Location} = H,
+  if
+    DownPid == QPid ->
+      ets:delete(etsElements, {DownPid, ElementPid}),
+      giveMeLocationListAcc(DownPid, T, LocationList ++ [Location]);
+    true -> giveMeLocationListAcc(DownPid, T, LocationList)
+  end.
+
 
 sendMassagesRoutine(MainNodePid) ->
   try
@@ -206,7 +257,7 @@ sendMassagesRoutine(MainNodePid) ->
 
 sendDataToGui()->
   try
-    receive after 3000  -> % 2 seconds
+    receive after 3000  -> % 3 seconds
       io:format("Send to GUI - etsQs: ~p ~n", [ets:tab2list(etsQs)]),
       io:format("Send to GUI - etsElements: ~p ~n", [ets:tab2list(etsElements)]),
       sendDataToGui()
