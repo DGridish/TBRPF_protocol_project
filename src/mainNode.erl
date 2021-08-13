@@ -120,7 +120,6 @@ handle_cast({moveToOtherQuarter, QPid, ElementPid, NewQuarter, NewLocation, Spee
 {noreply, State};
 
 handle_cast({sendMassage}, State = #mainNode_state{}) ->
-  % TODO Pick to element and send msg
   Data = rand:uniform(1000),
   From = ets:first(etsElements),
   To = ets:last(etsElements),
@@ -192,8 +191,7 @@ manageQNodes(QNodes, MainNodePid) ->
 manageQNodesLoop(MainNodePid)->
   receive
     {nodedown,Node} -> gen_server:cast(MainNodePid, {qNodeDown, Node});
-    _ -> donothing                            %{nodedown,q4@dgridish}
-    %Test -> io:format("Main manageQNodesLoop: ~p ~n", [Test])
+    _ -> donothing
   end,
   manageQNodesLoop(MainNodePid).
 
@@ -202,6 +200,7 @@ index_of(_, [], _)  -> not_found;
 index_of(Item, [Item|_], Index) -> Index;
 index_of(Item, [_|Tl], Index) -> index_of(Item, Tl, Index+1).
 
+clean([[]]) -> [];
 clean([H|T]) -> [X] = H, cleanAcc(T, X).
 
 cleanAcc([], List) -> List;
@@ -258,8 +257,8 @@ sendMassagesRoutine(MainNodePid) ->
 sendDataToGui()->
   try
     receive after 3000  -> % 3 seconds
-      io:format("Send to GUI - etsQs: ~p ~n", [ets:tab2list(etsQs)]),
-      io:format("Send to GUI - etsElements: ~p ~n", [ets:tab2list(etsElements)]),
+      %io:format("Send to GUI - etsQs: ~p ~n", [ets:tab2list(etsQs)]),
+      %io:format("Send to GUI - etsElements: ~p ~n", [ets:tab2list(etsElements)]),
       sendDataToGui()
     end
   catch

@@ -99,20 +99,19 @@ handle_cast({makeMovement}, State = #elementNode_state{}) ->
     offTheMap -> % billiard table movement
       gen_server:cast(State#elementNode_state.parentPid, {updateElement, self(), NewLocation}),
       if
-        (NewX < 100) and (NewY < 100) -> NewDirection = (180 + State#elementNode_state.direction) rem 360;
-        (NewX < 100) and (NewY > 1900) -> NewDirection = (180 + State#elementNode_state.direction) rem 360;
-        (NewX > 1900) and (NewY < 100) -> NewDirection = (180 + State#elementNode_state.direction) rem 360;
-        (NewX > 1900) and (NewY > 1900) -> NewDirection = (180 + State#elementNode_state.direction) rem 360;
-        (NewX < 100) -> NewDirection = (540 - State#elementNode_state.direction) rem 360;
-        (NewX > 1900) -> NewDirection = (540 + State#elementNode_state.direction) rem 360;
-        (NewY < 100) -> NewDirection = (360 - State#elementNode_state.direction) rem 360;
-        (NewY > 1900) -> NewDirection = (360 - State#elementNode_state.direction) rem 360;
+        (NewX < 200) and (NewY < 200) -> NewDirection = (180 + State#elementNode_state.direction) rem 360;
+        (NewX < 200) and (NewY > 1800) -> NewDirection = (180 + State#elementNode_state.direction) rem 360;
+        (NewX > 1800) and (NewY < 200) -> NewDirection = (180 + State#elementNode_state.direction) rem 360;
+        (NewX > 1800) and (NewY > 1800) -> NewDirection = (180 + State#elementNode_state.direction) rem 360;
+        (NewX < 200) -> NewDirection = (540 - State#elementNode_state.direction) rem 360;
+        (NewX > 1800) -> NewDirection = (540 + State#elementNode_state.direction) rem 360;
+        (NewY < 200) -> NewDirection = (360 - State#elementNode_state.direction) rem 360;
+        (NewY > 1800) -> NewDirection = (360 - State#elementNode_state.direction) rem 360;
         true -> NewDirection = OLdDirection
       end,
-      %io:format("PID, OLdDirection, NewDirection, OldQuarter, NewQuarter : ~p ~n", [[self(), OLdDirection, NewDirection, OldQuarter, NewQuarter]]),
       {noreply, State#elementNode_state{location = NewLocation, direction = NewDirection, time = NewTime}};
 
-    NewQuarter -> % io:format("NewQuarter : ~p ~n", [[self(),NewQuarter]]),
+    NewQuarter ->
       gen_server:cast(State#elementNode_state.parentPid, {moveToOtherQuarter, State#elementNode_state.elementPid, NewQuarter, NewLocation,
         State#elementNode_state.speed, State#elementNode_state.direction, State#elementNode_state.time}),
       gen_server:cast(self(), {deleteElement}),
@@ -124,31 +123,31 @@ handle_cast({getNeighborsList}, State = #elementNode_state{}) ->
     MyQPid = State#elementNode_state.parentPid,
     {X, Y} = State#elementNode_state.location,
     Quarter = State#elementNode_state.quarter,
+    MyPid = self(),
     case Quarter of
       1 ->   if
-               (X > 1000 - ?RADIUS) and (Y > 0) and (Y < 1000 - ?RADIUS) -> gen_server:cast(MyQPid, {giveMeElementList, self(), [2]});
-               (X > 0) and (X < 1000 - ?RADIUS) and (Y > 1000 - ?RADIUS) -> gen_server:cast(MyQPid, {giveMeElementList, self(), [3]});
-               (X > 1000 - ?RADIUS) and (Y > 1000 - ?RADIUS) -> gen_server:cast(MyQPid, {giveMeElementList, self(), [2, 3, 4]});
-               true -> gen_server:cast(MyQPid, {giveMeElementList, self(), []})
+               (X > 1000 - ?RADIUS) and (Y > 0) and (Y < 1000 - ?RADIUS) -> gen_server:cast(MyQPid, {giveMeElementList, MyPid, [2]});
+               (X > 0) and (X < 1000 - ?RADIUS) and (Y > 1000 - ?RADIUS) -> gen_server:cast(MyQPid, {giveMeElementList, MyPid, [3]});
+               (X > 1000 - ?RADIUS) and (Y > 1000 - ?RADIUS) -> gen_server:cast(MyQPid, {giveMeElementList, MyPid, [2, 3, 4]});
+               true -> gen_server:cast(MyQPid, {giveMeElementList, MyPid, []})
              end;
       2 ->   if
-               (X > 1000 + ?RADIUS) and (X < 2000) and (Y > 1000 - ?RADIUS) -> gen_server:cast(MyQPid, {giveMeElementList, self(), [4]});
-               (X < 1000 + ?RADIUS) and (Y > 0) and (Y < 1000 - ?RADIUS) -> gen_server:cast(MyQPid, {giveMeElementList, self(), [1]});
-               (X < 1000 + ?RADIUS) and (Y > 1000 - ?RADIUS) -> gen_server:cast(MyQPid, {giveMeElementList, self(), [1, 3, 4]});
-               true -> gen_server:cast(MyQPid, {giveMeElementList, self(), []})
+               (X > 1000 + ?RADIUS) and (X < 2000) and (Y > 1000 - ?RADIUS) -> gen_server:cast(MyQPid, {giveMeElementList, MyPid, [4]});
+               (X < 1000 + ?RADIUS) and (Y > 0) and (Y < 1000 - ?RADIUS) -> gen_server:cast(MyQPid, {giveMeElementList, MyPid, [1]});
+               (X < 1000 + ?RADIUS) and (Y > 1000 - ?RADIUS) -> gen_server:cast(MyQPid, {giveMeElementList, MyPid, [1, 3, 4]});
+               true -> gen_server:cast(MyQPid, {giveMeElementList, MyPid, []})
              end;
       3 ->   if
-               (X > 0) and (X < 1000 - ?RADIUS) and (Y < 1000 + ?RADIUS) -> gen_server:cast(MyQPid, {giveMeElementList, self(), [1]});
-               (X > 1000 - ?RADIUS) and (Y < 2000) and (Y > 1000 + ?RADIUS) -> gen_server:cast(MyQPid, {giveMeElementList, self(), [4]});
-               (X > 1000 - ?RADIUS) and (Y < 1000 + ?RADIUS) -> gen_server:cast(MyQPid, {giveMeElementList, self(), [1, 2, 4]});
-               true -> gen_server:cast(MyQPid, {giveMeElementList, self(), []})
-             end; %Temp =  (X > 0 and (X < 1000 - ?RADIOS) and (Y < 1000 + ?RADIOS)),
-
+               (X > 0) and (X < 1000 - ?RADIUS) and (Y < 1000 + ?RADIUS) -> gen_server:cast(MyQPid, {giveMeElementList, MyPid, [1]});
+               (X > 1000 - ?RADIUS) and (Y < 2000) and (Y > 1000 + ?RADIUS) -> gen_server:cast(MyQPid, {giveMeElementList, MyPid, [4]});
+               (X > 1000 - ?RADIUS) and (Y < 1000 + ?RADIUS) -> gen_server:cast(MyQPid, {giveMeElementList, MyPid, [1, 2, 4]});
+               true -> gen_server:cast(MyQPid, {giveMeElementList, MyPid, []})
+             end;
       4 ->   if
-               (X > 1000 + ?RADIUS) and (X < 2000) and (Y < 1000 + ?RADIUS) -> gen_server:cast(MyQPid, {giveMeElementList, self(), [2]});
-               (X < 1000 + ?RADIUS) and (Y < 2000) and (Y > 1000 + ?RADIUS) -> gen_server:cast(MyQPid, {giveMeElementList, self(), [3]});
-               (X < 1000 + ?RADIUS) and (Y < 1000 + ?RADIUS) -> gen_server:cast(MyQPid, {giveMeElementList, self(), [1, 2, 3]});
-               true -> gen_server:cast(MyQPid, {giveMeElementList, self(), []})
+               (X > 1000 + ?RADIUS) and (X < 2000) and (Y < 1000 + ?RADIUS) -> gen_server:cast(MyQPid, {giveMeElementList, MyPid, [2]});
+               (X < 1000 + ?RADIUS) and (Y < 2000) and (Y > 1000 + ?RADIUS) -> gen_server:cast(MyQPid, {giveMeElementList, MyPid, [3]});
+               (X < 1000 + ?RADIUS) and (Y < 1000 + ?RADIUS) -> gen_server:cast(MyQPid, {giveMeElementList, MyPid, [1, 2, 3]});
+               true -> gen_server:cast(MyQPid, {giveMeElementList, MyPid, []})
              end
     end,
     {noreply, State}
@@ -255,11 +254,11 @@ movementTimer(ElementPid) ->
   end.
 
 neighborsTimer(ElementPid) ->
-  WaitTime = 1000 * ?NEIGHBORS_TIMER, % (1 + rand:uniform(5)), %
+  WaitTime = 1000 * ?NEIGHBORS_TIMER,
   receive
     _ ->  doNothing
-  after WaitTime -> % milliseconds
-    %gen_server:cast(ElementPid,{getNeighborsList}),
+  after WaitTime + rand:uniform(500) -> % milliseconds
+    gen_server:cast(ElementPid,{getNeighborsList}),
     neighborsTimer(ElementPid)
   end.
 
@@ -280,7 +279,7 @@ checkNewLocation({X,Y}) ->
     ((X >= 1000) and (X < 2000) and (Y > 0) and (Y =< 1000)) -> 2;
     ((X > 0) and (X < 1000) and (Y >= 1000) and (Y < 2000)) -> 3;
     ((X >= 1000) and (X < 2000) and (Y >= 1000) and (Y < 2000)) -> 4;
-    true -> io:format("checkNewLocation Bug ~p ~n", [[X,Y]])
+    true -> offTheMap
   end.
 
 findElementsInRadius([], _MyLocation) -> [];

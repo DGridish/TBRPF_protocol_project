@@ -101,7 +101,6 @@ handle_cast({moveToOtherQuarter, ElementPid, NewQuarter, NewLocation, Speed, Dir
   {noreply, State};
 
 handle_cast({createElement, NewLocation, Speed, Direction, Time}, State = #qNode_state{}) ->
-  %io:format("MainNode qNodeDown BackUpQPid ~p ~n", [NewLocation]),
   spawn(elementNode, start_link, [[self(), State#qNode_state.quarter, {NewLocation, Speed, Direction, Time}]]),
   {noreply, State};
 
@@ -115,16 +114,17 @@ handle_cast({giveMeElementList, ElementPid, []}, State = #qNode_state{}) ->
   {noreply, State};
 
 handle_cast({giveMeElementList, ElementPid, HowToAskList}, State = #qNode_state{}) ->
+  MyQPid = self(),
   try
     NodeAndPidList = gen_server:call(State#qNode_state.mainNode, {howAreThey, HowToAskList}),
-    OElement = [gen_server:call(Pid, {sendYourElementList}) || {_Node, Pid} <- NodeAndPidList],
+    OElement = [gen_server:call(Pid, {sendYourElementList}, (5000 + rand:uniform(1000))) || {_Node, Pid} <- NodeAndPidList, Pid /= MyQPid],
     OtherElement = toOneList(OElement),
     MyElements = ets:tab2list(etsLocation),
     AllElement = MyElements ++ OtherElement,
     gen_server:cast(ElementPid, {takeElementList, AllElement}),
     {noreply, State}
   catch
-      A:B  ->  io:format("qNode giveMeElementList Error: ~p ~n", [[A,B,ElementPid]]),
+      A:B  ->  io:format("qNode giveMeElementList Error: ~p ~n", [[MyQPid,A,B,ElementPid]]),
                 gen_server:cast(ElementPid, {takeElementList, ets:tab2list(etsLocation)}),
                 {noreply, State}
   end;
@@ -184,7 +184,6 @@ toOneList([[]]) -> [];
 toOneList([[]|T]) -> toOneList(T);
 toOneList([H|T]) ->
   OneList = H,
-  %io:format("qNode toOneList: ~p ~n", [OneList]),
   toOneListAcc(T, OneList).
 
 toOneListAcc([[]], OneList) -> OneList;
@@ -192,5 +191,4 @@ toOneListAcc([[]|T], OneList) -> toOneListAcc(T,OneList);
 toOneListAcc([], OneList) -> OneList;
 toOneListAcc([H|T], List) ->
   OneList = H ++ List,
-  %io:format("qNode toOneListAcc: ~p ~n", [OneList]),
   toOneListAcc(T, OneList).
