@@ -43,7 +43,7 @@ start_link(QNodes, QAreas, NUM_OF_ELEM, MainNode) ->
   {stop, Reason :: term()} | ignore).
 init([QNodes, QAreas, NUM_OF_ELEM, MainNode]) ->
   ets:new(etsLocation, [set, public, named_table, {read_concurrency, true}, {write_concurrency, true}]),                % Create elements location table
-  Quarter = findQNodeQuarter(QNodes, QAreas, node()),                                                       % Find the quarter for which the node is responsible from QAreas list
+  Quarter = findQNodeQuarter(QNodes, QAreas, node()),                                                                   % Find the quarter for which the node is responsible from QAreas list
   gen_server:cast(MainNode, {addQ, node(), self(), Quarter}),
   spawnElementNodes(NUM_OF_ELEM, Quarter),
   {ok, #qNode_state{mainNode = MainNode, quarter = Quarter}}.
@@ -65,6 +65,7 @@ handle_call({sendYourElementList}, _From, State = #qNode_state{}) ->
 
 handle_call(_Request, _From, State = #qNode_state{}) ->
   {reply, ok, State}.
+
 
 %% @private
 %% @doc Handling cast messages
@@ -104,10 +105,6 @@ handle_cast({createElement, NewLocation, Speed, Direction, Time}, State = #qNode
   spawn(elementNode, start_link, [[self(), State#qNode_state.quarter, {NewLocation, Speed, Direction, Time}]]),
   {noreply, State};
 
-handle_cast({allParameters, _Parameters}, State = #qNode_state{}) ->
-  % TODO send parameters - Re-creation of elements with new parameters or Updating existing elements and creating additional elements
-{noreply, State};
-
 handle_cast({giveMeElementList, ElementPid, []}, State = #qNode_state{}) ->
   FullList = [ets:tab2list(etsLocation)],
   gen_server:cast(ElementPid, {takeElementList, FullList}),
@@ -117,28 +114,25 @@ handle_cast({giveMeElementList, ElementPid, HowToAskList}, State = #qNode_state{
   MyQPid = self(),
   try
     NodeAndPidList = gen_server:call(State#qNode_state.mainNode, {howAreThey, HowToAskList}),
-    OElement = [gen_server:call(Pid, {sendYourElementList}, (5000 + rand:uniform(1000))) || {_Node, Pid} <- NodeAndPidList, Pid /= MyQPid],
+    OElement = [gen_server:call(Pid, {sendYourElementList}, 500) || {_Node, Pid} <- NodeAndPidList, Pid /= MyQPid],
     OtherElement = toOneList(OElement),
     MyElements = ets:tab2list(etsLocation),
     AllElement = MyElements ++ OtherElement,
     gen_server:cast(ElementPid, {takeElementList, AllElement}),
     {noreply, State}
   catch
-      A:B  ->  io:format("qNode giveMeElementList Error: ~p ~n", [[MyQPid,A,B,ElementPid]]),
+      _A:_B  -> %io:format("qNode giveMeElementList Error: ~p ~n", [[MyQPid,A,B,ElementPid]]),
                 gen_server:cast(ElementPid, {takeElementList, ets:tab2list(etsLocation)}),
                 {noreply, State}
   end;
 
-handle_cast({sendMassageToElenemt, FromElement, ToQPid, ToElement, Data}, State = #qNode_state{}) ->
-  MyQpid = self(),
-  if
-    ToQPid == MyQpid -> gen_server:cast(FromElement, {sendMassageDirectly, ToElement, Data});
-    true -> gen_server:cast(FromElement, {sendMassageViaQNode, ToQPid, ToElement, Data})
-  end,
+handle_cast({allParameters, _Parameters}, State = #qNode_state{}) ->
+  % TODO send parameters - Re-creation of elements with new parameters or Updating existing elements and creating additional elements
   {noreply, State};
 
 handle_cast(_Request, State = #qNode_state{}) ->
   {noreply, State}.
+
 
 %% @private
 %% @doc Handling all non call/cast messages
@@ -149,6 +143,7 @@ handle_cast(_Request, State = #qNode_state{}) ->
 handle_info(_Info, State = #qNode_state{}) ->
   {noreply, State}.
 
+
 %% @private
 %% @doc This function is called by a gen_server when it is about to
 %% terminate. It should be the opposite of Module:init/1 and do any
@@ -158,6 +153,7 @@ handle_info(_Info, State = #qNode_state{}) ->
     State :: #qNode_state{}) -> term()).
 terminate(_Reason, _State = #qNode_state{}) ->
   ok.
+
 
 %% @private
 %% @doc Convert process state when code is changed
@@ -170,21 +166,25 @@ code_change(_OldVsn, State = #qNode_state{}, _Extra) ->
 %%%===================================================================
 %%% Internal functions
 %%%===================================================================
+
 % gets My Area from lists of nodes and areas
 findQNodeQuarter([], [], _Node) -> emptyLists;
 findQNodeQuarter([Node|_T1], [Quarter|_T2], Node) -> Quarter;
 findQNodeQuarter([_H1|T1], [_H2|T2], Node) -> findQNodeQuarter(T1, T2, Node).
+
 
 spawnElementNodes(NUM_OF_ELEM, Quarter) ->
   QPid = self(),
   ElementsNumbers = lists:seq(1, NUM_OF_ELEM div 4),
   [spawn(elementNode, start_link, [[QPid, Quarter]])|| _OneByOne <- ElementsNumbers].
 
+
 toOneList([[]]) -> [];
 toOneList([[]|T]) -> toOneList(T);
 toOneList([H|T]) ->
   OneList = H,
   toOneListAcc(T, OneList).
+
 
 toOneListAcc([[]], OneList) -> OneList;
 toOneListAcc([[]|T], OneList) -> toOneListAcc(T,OneList);

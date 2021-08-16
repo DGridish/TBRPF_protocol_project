@@ -67,6 +67,7 @@ init([ParentNode, Quarter, {NewLocation, NewSpeed, NewDirection, NewTime}]) ->
     location = NewLocation, direction = NewDirection, speed = NewSpeed, time = NewTime, neighbors = [], diGraph = DiGraph}}
   end.
 
+
 %% @private
 %% @doc Handling call messages
 -spec(handle_call(Request :: term(), From :: {pid(), Tag :: term()},
@@ -77,8 +78,12 @@ init([ParentNode, Quarter, {NewLocation, NewSpeed, NewDirection, NewTime}]) ->
   {noreply, NewState :: #elementNode_state{}, timeout() | hibernate} |
   {stop, Reason :: term(), Reply :: term(), NewState :: #elementNode_state{}} |
   {stop, Reason :: term(), NewState :: #elementNode_state{}}).
+handle_call({sendYourNeighborsList}, _From, State = #elementNode_state{}) ->
+  {reply, State#elementNode_state.neighbors, State};
+
 handle_call(_Request, _From, State = #elementNode_state{}) ->
   {reply, ok, State}.
+
 
 %% @private
 %% @doc Handling cast messages
@@ -152,42 +157,37 @@ handle_cast({getNeighborsList}, State = #elementNode_state{}) ->
     end,
     {noreply, State}
   catch
-      A:B  -> io:format("ElementNode getNeighborsList Error: ~p ~n", [[A,B]])
+      _:_  -> {noreply, State}
   end;
 
 handle_cast({takeElementList, [FullList]}, State = #elementNode_state{}) ->
   MyLocation = State#elementNode_state.location,
-  io:format("ElementNode takeElementList1: ~p ~n", [[self(), FullList]]),
   AllInRadius = findElementsInRadius(FullList, MyLocation),
-  io:format("ElementNode takeElementList2: ~p ~n", [[self(), AllInRadius]]),
 {noreply, State#elementNode_state{neighbors = AllInRadius}};
 
 handle_cast({sendMassage, ToElement, Data}, State = #elementNode_state{}) ->
   MyPid = self(),
-  io:format("ElementNode sendMassage Got It: ~p ~n", [[MyPid, ToElement, Data]]),
-  %DiGraph = digraph:new(),
-  %[digraph:add_vertex(DiGraph, Element) || Element <- AllInRadius],
-  %[digraph:add_edge(DiGraph, MyPid, Element) || Element <- AllInRadius],
-  %io:format("ElementNode DiGraph: ~p ~n", [[self(), DiGraph]]),
-  %[H|T] = AllInRadius,
-  %A = digraph:get_short_path(diGraph, MyPid, H),
-  %io:format("ElementNode get_short_path: ~p ~n", [A]),
-  %Path = digraph:get_short_path(diGraph, FromPid, ToElement),
-  %io:format("findPath Path: ~p ~n", [Path]),
-  {noreply, State};
-%%  try
-%%    Path = gen_server:call(Tbrpf, {findPath, ToElement}),
-%%    io:format("elementNode sendMassage Path: ~p ~n", [Path]),
-%%    if
-%%      Path == [] -> io:format("There is no path ~n", []);
-%%      true -> [H|T] = Path, gen_server:cast(H, {msgFromOtherElement, MyPid, ToElement, T, Data})
-%%    end,
-%%    {noreply, State}
-%%  catch
-%%      X:Y  -> io:format("elementNode sendMassage Error: ~p ~n", [[X,Y]]),
-%%      {noreply, State}
-%%  end;
-
+  try
+    AlreadyVisitedList = State#elementNode_state.neighbors,
+    NList = [gen_server:call(Neighbor, {sendYourNeighborsList}, 500) || Neighbor <- AlreadyVisitedList],
+    NeighborsList = flatten(NList),
+    if
+      NeighborsList == [] ->
+        List = gen_server:call(State#elementNode_state.parentPid, {sendYourElementList}, 500),
+        ListWithoutMyPid = [X || {X,_} <- List, X /= MyPid];
+      true -> ListWithoutMyPid = [X || X <- NeighborsList, X /= MyPid]
+    end,
+    ToDiGraph = ListWithoutMyPid ++ [MyPid],
+    DiGraph = digraph:new(),
+    [digraph:add_vertex(DiGraph, X) || X <- ToDiGraph],
+    [digraph:add_edge(DiGraph, MyPid, X) || X <- ListWithoutMyPid],
+    Path = lookForTargetElement(DiGraph, MyPid, ToElement, ListWithoutMyPid),
+    [H|_T] = Path,
+    gen_server:call(H, {msgFromOtherElement, MyPid, ToElement, Path, Data}),
+    {noreply, State}
+  catch
+    _:_ -> {noreply, State}
+  end;
 
 handle_cast({msgFromOtherElement, FromElement, ToElement, Path, Data}, State = #elementNode_state{}) ->
   MyPid = self(),
@@ -197,11 +197,12 @@ handle_cast({msgFromOtherElement, FromElement, ToElement, Path, Data}, State = #
   end,
   {noreply, State};
 
-handle_cast({deleteElement}, State = #elementNode_state{}) -> %TODO How to completely delete an element
+handle_cast({deleteElement}, State = #elementNode_state{}) ->
   {stop, shutdown, State};
 
 handle_cast(_Request, State = #elementNode_state{}) ->
   {noreply, State}.
+
 
 %% @private
 %% @doc Handling all non call/cast messages
@@ -212,6 +213,7 @@ handle_cast(_Request, State = #elementNode_state{}) ->
 handle_info(_Info, State = #elementNode_state{}) ->
   {noreply, State}.
 
+
 %% @private
 %% @doc This function is called by a gen_server when it is about to
 %% terminate. It should be the opposite of Module:init/1 and do any
@@ -221,6 +223,7 @@ handle_info(_Info, State = #elementNode_state{}) ->
     State :: #elementNode_state{}) -> term()).
 terminate(_Reason, _State = #elementNode_state{}) ->
   ok.
+
 
 %% @private
 %% @doc Convert process state when code is changed
@@ -233,34 +236,39 @@ code_change(_OldVsn, State = #elementNode_state{}, _Extra) ->
 %%%===================================================================
 %%% Internal functions
 %%%===================================================================
+
+
 setSpeedAndDirection(Quarter) ->
   case Quarter of
-    1 -> Location = {300 + rand:uniform(700), 300 + rand:uniform(700)};   % 1 -> Location = {rand:uniform(1000), rand:uniform(1000)};
-    2 -> Location = {1000 + rand:uniform(700), 300 + rand:uniform(700)};    % 2 -> Location = {1000 + rand:uniform(1000), rand:uniform(1000)};
-    3 -> Location = {300 + rand:uniform(700), 1000 + rand:uniform(700)};  % 3 -> Location = {rand:uniform(1000), 1000 + rand:uniform(1000)};
-    4 -> Location = {1000 + rand:uniform(700), 1000 + rand:uniform(700)}    % 4 -> Location = {1000 + rand:uniform(1000), 1000 + rand:uniform(1000)}
+    1 -> Location = {300 + rand:uniform(700), 300 + rand:uniform(700)};
+    2 -> Location = {1000 + rand:uniform(700), 300 + rand:uniform(700)};
+    3 -> Location = {300 + rand:uniform(700), 1000 + rand:uniform(700)};
+    4 -> Location = {1000 + rand:uniform(700), 1000 + rand:uniform(700)}
     end,
   Direction = rand:uniform(360),    % degrees
   Speed = rand:uniform(?MAX_SPEED), % m/s
   [Location, Direction, Speed].
 
+
 movementTimer(ElementPid) ->
   WaitTime = 1000 * ?MOVEMENT_TIMER,
   receive
     _ ->  doNothing
-  after WaitTime -> % milliseconds
+  after (WaitTime + rand:uniform(500)) -> % milliseconds
     gen_server:cast(ElementPid,{makeMovement}),
     movementTimer(ElementPid)
   end.
+
 
 neighborsTimer(ElementPid) ->
   WaitTime = 1000 * ?NEIGHBORS_TIMER,
   receive
     _ ->  doNothing
-  after WaitTime + rand:uniform(500) -> % milliseconds
+  after (WaitTime + rand:uniform(500)) -> % milliseconds
     gen_server:cast(ElementPid,{getNeighborsList}),
     neighborsTimer(ElementPid)
   end.
+
 
 calcMovement(State) ->
   {OldX, OldY} = State#elementNode_state.location,
@@ -272,6 +280,7 @@ calcMovement(State) ->
   NewY = round(OldY + math:sin(Direction * math:pi() / 180) * Speed * (MovementTime / 1000)),
   [NewX, NewY, NewTime].
 
+
 checkNewLocation({X,Y}) ->
   if
     ((X =< 0) or (X >= 2000) or (Y =< 0) or (Y >= 2000)) -> offTheMap;
@@ -281,6 +290,7 @@ checkNewLocation({X,Y}) ->
     ((X >= 1000) and (X < 2000) and (Y >= 1000) and (Y < 2000)) -> 4;
     true -> offTheMap
   end.
+
 
 findElementsInRadius([], _MyLocation) -> [];
 findElementsInRadius([H|T], {MyX, MyY}) ->
@@ -308,16 +318,19 @@ findElementsInRadiusAcc([H|T], {MyX, MyY}, InRadiusList) ->
   end.
 
 
+flatten([]) -> [];
+flatten(List) when is_list(List) == false -> [List];
+flatten([H|T]) -> flatten(H) ++ flatten(T).
 
-%%buildDigraph(DiGraph, []) -> connectDiGraph(DiGraph);
-%%buildDigraph(DiGraph, [H|T])->
-%%  {{QPid, ElementPid},{X, Y}} = H,
-%%  ElementVertex = digraph:add_vertex(DiGraph, H, ElementPid),
-%%  buildDigraph(DiGraph, T).
-%%
-%%
-%%connectDiGraph(DiGraph) ->
-%%  AllVertices = digraph:vertices(DiGraph),
-%%  io:format("DiGraph: ~p ~n", [DiGraph]),
-%%  io:format("AllVertices: ~p ~n", [AllVertices]),
-%%  DiGraph.
+
+lookForTargetElement(DiGraph, MyPid, ToElement, [H|T]) ->
+  Temp = digraph:vertex(DiGraph, ToElement),
+  if
+    Temp -> digraph:get_short_path(DiGraph, MyPid, ToElement);
+    true ->
+      HNList = gen_server:call(H, {sendYourNeighborsList}, 500),
+      HNeighborsList = flatten(HNList),
+      [digraph:add_vertex(DiGraph, X) || X <- HNeighborsList],
+      [digraph:add_edge(DiGraph, H, X) || X <- HNeighborsList],
+      lookForTargetElement(DiGraph, MyPid, ToElement, T)
+  end.

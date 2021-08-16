@@ -19,10 +19,9 @@
   code_change/3]).
 
 -define(SERVER, ?MODULE).
--define(NUM_OF_ELEMENTS, 12).
+-define(NUM_OF_ELEMENTS, 16).
 -define(sendMassageTimer, 1). % per 5 seconds
--define(MAX_SPEED, 30).
-%-define(RefreshRate, 100).
+-define(MAX_SPEED, 20).
 
 -record(mainNode_state, {qNodes, qAreas}).
 
@@ -46,10 +45,11 @@ start_link(QNodes, QAreas) ->
   {ok, State :: #mainNode_state{}} | {ok, State :: #mainNode_state{}, timeout() | hibernate} |
   {stop, Reason :: term()} | ignore).
 init([QNodes, QAreas]) ->
+  TimeStart = erlang:timestamp(),
   MainNodePid = self(),
   ets:new(etsQs,[set, public, named_table]),
-  ets:new(etsElements,[ordered_set, public, named_table]),                                                                      % Create elements table
-  ets:new(etsMessages,[ordered_set, public, named_table, {read_concurrency, true}, {write_concurrency, true}]),         % Create massages table
+  ets:new(etsElements,[ordered_set, public, named_table]),                                                              % Create elements table
+
 
   % TODO send massages between elements
   %io:format("MainNodePid ~p ~n", [MainNodePid]),
@@ -58,12 +58,13 @@ init([QNodes, QAreas]) ->
   % TODO spawn GUI
   % GuiPid = guiStateM:start_link([QNodes, node()]),
   % spawn_link(fun()-> sendDataToGui(GuiPid) end).
-  spawn_link(fun()-> sendDataToGui() end),
+  spawn_link(fun()-> sendDataToGui(TimeStart) end),
   % TODO pass parameters to q node or use default in qNode? What parameters?
 
-  spawnQNodes(QNodes, QAreas, ?NUM_OF_ELEMENTS, init),                                                      % Spawn q nodes
-  spawn_link(fun() -> manageQNodes(QNodes, MainNodePid) end),                                                    % Monitor q nodes
+  spawnQNodes(QNodes, QAreas, ?NUM_OF_ELEMENTS, init),                                                                  % Spawn q nodes
+  spawn_link(fun() -> manageQNodes(QNodes, MainNodePid) end),                                                           % Monitor q nodes
   {ok, #mainNode_state{qNodes = QNodes, qAreas = QAreas}}.
+
 
 %% @private
 %% @doc Handling call messages
@@ -77,11 +78,12 @@ init([QNodes, QAreas]) ->
   {stop, Reason :: term(), NewState :: #mainNode_state{}}).
 handle_call({howAreThey, QuarterNumbers}, _From, State = #mainNode_state{}) ->
   Temp = [ets:match(etsQs,{Key,'$1'}) || Key <- QuarterNumbers],
-  PidsList = clean(Temp),
+  PidsList = flatten(Temp),
   {reply, PidsList, State};
 
 handle_call(_Request, _From, State = #mainNode_state{}) ->
   {reply, ok, State}.
+
 
 %% @private
 %% @doc Handling cast messages
@@ -89,11 +91,6 @@ handle_call(_Request, _From, State = #mainNode_state{}) ->
   {noreply, NewState :: #mainNode_state{}} |
   {noreply, NewState :: #mainNode_state{}, timeout() | hibernate} |
   {stop, Reason :: term(), NewState :: #mainNode_state{}}).
-
-handle_cast({allParameters, Parameters}, State = #mainNode_state{}) ->   % Parameters = {NumberOfElements, MaxSpeed, BroadcastRadius}
-  EtsQsList = ets:tab2list(etsQs),
-  [gen_server:cast(QPid, {allParameters, Parameters}) || {_Quarter, [_Node, QPid]} <- EtsQsList],
-  {noreply, State};
 
 handle_cast({addQ, QNode, QPid, Quarter}, State = #mainNode_state{}) ->
   ets:insert(etsQs, {Quarter, {QNode, QPid}}),
@@ -142,10 +139,17 @@ handle_cast({qNodeDown, Node}, State = #mainNode_state{}) ->
   Direction = rand:uniform(360),
   Speed = rand:uniform(?MAX_SPEED),
   [gen_server:cast(BackUpQPid, {createElement, Location, Speed, Direction, Time}) || Location <- LocationList],
+  io:format("Q node ~p is down ~nQ node ~p will back him up ~n", [Node, QNode]),
 {noreply, State};
+
+handle_cast({allParameters, Parameters}, State = #mainNode_state{}) ->   % Parameters = {NumberOfElements, MaxSpeed, BroadcastRadius}
+  EtsQsList = ets:tab2list(etsQs),
+  [gen_server:cast(QPid, {allParameters, Parameters}) || {_Quarter, [_Node, QPid]} <- EtsQsList],
+  {noreply, State};
 
 handle_cast(_Request, State = #mainNode_state{}) ->
   {noreply, State}.
+
 
 %% @private
 %% @doc Handling all non call/cast messages
@@ -156,6 +160,7 @@ handle_cast(_Request, State = #mainNode_state{}) ->
 handle_info(_Info, State = #mainNode_state{}) ->
   {noreply, State}.
 
+
 %% @private
 %% @doc This function is called by a gen_server when it is about to
 %% terminate. It should be the opposite of Module:init/1 and do any
@@ -165,6 +170,7 @@ handle_info(_Info, State = #mainNode_state{}) ->
     State :: #mainNode_state{}) -> term()).
 terminate(_Reason, _State = #mainNode_state{}) ->
   ok.
+
 
 %% @private
 %% @doc Convert process state when code is changed
@@ -195,16 +201,17 @@ manageQNodesLoop(MainNodePid)->
   end,
   manageQNodesLoop(MainNodePid).
 
+
 index_of(Item, List) -> index_of(Item, List, 1).
 index_of(_, [], _)  -> not_found;
 index_of(Item, [Item|_], Index) -> Index;
 index_of(Item, [_|Tl], Index) -> index_of(Item, Tl, Index+1).
 
-clean([[]]) -> [];
-clean([H|T]) -> [X] = H, cleanAcc(T, X).
 
-cleanAcc([], List) -> List;
-cleanAcc([H|T], List) -> [X] = H, cleanAcc(T, (List++X)).
+flatten([]) -> [];
+flatten(List) when is_list(List) == false -> [List];
+flatten([H|T]) -> flatten(H) ++ flatten(T).
+
 
 howIsHe(Node, [H|T]) ->
   {QQuarter,{QNode,QPid}} = H,
@@ -221,6 +228,7 @@ howIsHeAcc(Node, [H|T], [QPid, QuarterList]) ->
     true -> howIsHeAcc(Node, T, [QPid, QuarterList])
   end.
 
+
 giveMeLocationList(_DownPid, []) -> [];
 giveMeLocationList(DownPid, [H|T]) ->
   {{QPid, ElementPid}, Location} = H,
@@ -228,8 +236,6 @@ giveMeLocationList(DownPid, [H|T]) ->
     DownPid == QPid ->
       ets:delete(etsElements, {DownPid, ElementPid}),
       giveMeLocationListAcc(DownPid, T, [Location]);
-
-      %ets:delete(etsElements, {DownPid, ElementPid}); %{{<12672.106.0>,<12672.135.0>},{853,903}}
     true -> giveMeLocationList(DownPid, T)
   end.
 
@@ -246,7 +252,7 @@ giveMeLocationListAcc(DownPid, [H|T], LocationList) ->
 
 sendMassagesRoutine(MainNodePid) ->
   try
-    receive after 2000  -> % 2 seconds
+    receive after 5000  -> % 5 seconds
       %gen_server:cast(MainNodePid, {sendMassage}),
       sendMassagesRoutine(MainNodePid)
     end
@@ -254,15 +260,19 @@ sendMassagesRoutine(MainNodePid) ->
     _ : _ -> sendMassagesRoutine(MainNodePid)
   end.
 
-sendDataToGui()->
+sendDataToGui(TimeStart)->
   try
     receive after 3000  -> % 3 seconds
-      %io:format("Send to GUI - etsQs: ~p ~n", [ets:tab2list(etsQs)]),
-      %io:format("Send to GUI - etsElements: ~p ~n", [ets:tab2list(etsElements)]),
-      sendDataToGui()
+
+      io:format("Send to GUI - etsQs: ~p ~n", [ets:tab2list(etsQs)]),
+      io:format("Send to GUI - etsElements: ~p ~n", [ets:tab2list(etsElements)]),
+      %TimeEnd = erlang:timestamp(),
+      %Time = timer:now_diff(TimeEnd, TimeStart),
+      %io:format("Send to GUI - 200K elements!  time: ~p ~n", [Time]),
+      sendDataToGui(TimeStart)
     end
   catch
-    _ : _ -> sendDataToGui()
+    _ : _ -> sendDataToGui(TimeStart)
   end.
 
 
