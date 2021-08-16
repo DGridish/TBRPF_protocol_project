@@ -4,14 +4,13 @@
 ## TBRPF Project
 The project describes communication conduct between mobile communication elements via TBRPF protocol.
 </br> 
-The elements can move according to a predefined mathematical motion model.
+Elements can move according to a predefined mathematical motion model.
 </br>
 The traffic area is a square with a 2 km long edge. This area is divided into four quarters, each square with a side of 1 km.
 </br>
-The elements can move between the four quarters while in motion.
+Elements can move between the four quarters while in motion.
 </br>
 ## TBRPF Protocol
-</br>
 Topology broadcast based on reverse-path forwarding (TBRPF) is a proactive routing protocol.
 </br> 
 TBRPF is a full-topology link-state protocol: each node is provided with the state of each link in the network (or within a cluster if hierarchical routing is used).
@@ -20,8 +19,7 @@ Each link-state update is broadcast reliably along a dynamic min-hop-path tree r
 </br> 
 Each update is sent along a single path to each node, resulting in improved efficiency.
 </br>
-## The Systems' Components
-</br>
+## The System Components
 ### 1. Main Node
 Use gen_server to create a client-server relation - OTP Design Principles.
 </br> 
@@ -34,7 +32,6 @@ Responsible for handling crashed nodes, If Q node crashes, responsible for trans
 Sends a request to send a message and prints information to the screen periodically.
 </br> 
 Two ETS: Q’s, All elements. 
-</br>
 ### 2. Q Node 
 Use gen_server to create a client-server relation - OTP Design Principles.
 </br>
@@ -45,7 +42,6 @@ Provides the information needed for Element nodes when a request is sent.
 Ability to contact other nodes requesting to send elements not in its area. 
 </br>
 ETS: Own elements. 
-</br>
 ### 3. Element Node 
 Use gen_server to create a client-server relation - OTP Design Principles.
 </br>
@@ -56,7 +52,6 @@ Responsible for maintaining an up-to-date list of neighbors
 Find the shortest path for messaging
 </br></br>
 ## Activation Instructions
-</br>
 ### Multiple Computers
 </br>
 1. For each Q node computer, open a terminal and enter the following:
@@ -78,7 +73,6 @@ c(elementNode).
 </br>
 4. In the main computer enter the command:
 mainNode:start_link(['q1@IP_ADDRESS1', 'q2@IP_ADDRESS2', 'q3@IP_ADDRESS3', 'q4@IP_ADDRESS4'],[1,2,3,4]).
-</br>
 ### Single Computer 
 </br>
 1. For each Q node computer, open a terminal tab and enter the following:
