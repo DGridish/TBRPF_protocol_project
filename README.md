@@ -73,6 +73,7 @@ c(elementNode).
 </br>
 4. In the main computer enter the command:
 mainNode:start_link(['q1@IP_ADDRESS1', 'q2@IP_ADDRESS2', 'q3@IP_ADDRESS3', 'q4@IP_ADDRESS4'],[1,2,3,4]).
+</br>
 ### Single Computer 
 </br>
 1. For each Q node computer, open a terminal tab and enter the following:
@@ -94,10 +95,9 @@ c(elementNode).
 4. In the main computer enter the command:
 mainNode:start_link(['q1@HOST_NAME', 'q2@HOST_NAME', 'q3@HOST_NAME', 'q4@HOST_NAME'],[1, 2, 3, 4]).
 </br>
-
 ### Video simulation
 you can watch a video simulation by clicking <a href="">here</a>.
-
+</br>
 ### Creator
 *Dan Gridish*  
 Computer Engineer, Ben-gurion University, Israel
