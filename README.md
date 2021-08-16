@@ -23,33 +23,22 @@ Each update is sent along a single path to each node, resulting in improved effi
 ### 1. Main Node
 Use gen_server to create a client-server relation - OTP Design Principles.
 </br> 
-Start the Q nodes and monitor them.
-</br> 
-Provides the information needed for Q nodes when a request is sent.
-</br> 
-Responsible for handling crashed nodes, If Q node crashes, responsible for transferring the elements to another Q node.
-</br> 
-Sends a request to send a message and prints information to the screen periodically.
-</br> 
-Two ETS: Q’s, All elements. 
+- Start the Q nodes and monitor them.
+- Provides the information needed for Q nodes when a request is sent.
+- Responsible for handling crashed nodes, If Q node crashes, responsible for transferring the elements to another Q node.
+- Sends a request to send a message and prints information to the screen periodically.
+- Two ETS: Q’s, All elements. 
 ### 2. Q Node 
-Use gen_server to create a client-server relation - OTP Design Principles.
-</br>
-Start the element nodes.
-</br>
-Provides the information needed for Element nodes when a request is sent.
-</br>
-Ability to contact other nodes requesting to send elements not in its area. 
-</br>
-ETS: Own elements. 
+- Use gen_server to create a client-server relation - OTP Design Principles.
+- Start the element nodes.
+- Provides the information needed for Element nodes when a request is sent.
+- Ability to contact other nodes requesting to send elements not in its area. 
+- ETS: Own elements. 
 ### 3. Element Node 
-Use gen_server to create a client-server relation - OTP Design Principles.
-</br>
-movement model: Direction and speed. 
-</br>
-Responsible for maintaining an up-to-date list of neighbors
-</br>
-Find the shortest path for messaging
+- Use gen_server to create a client-server relation - OTP Design Principles.
+- movement model: Direction and speed. 
+- Responsible for maintaining an up-to-date list of neighbors
+- Find the shortest path for messaging
 </br></br>
 ## Activation Instructions
 ### Multiple Computers
@@ -74,6 +63,7 @@ c(elementNode).
 4. In the main computer enter the command:
 mainNode:start_link(['q1@IP_ADDRESS1', 'q2@IP_ADDRESS2', 'q3@IP_ADDRESS3', 'q4@IP_ADDRESS4'],[1,2,3,4]).
 </br>
+
 ### Single Computer 
 </br>
 1. For each Q node computer, open a terminal tab and enter the following:
@@ -95,9 +85,11 @@ c(elementNode).
 4. In the main computer enter the command:
 mainNode:start_link(['q1@HOST_NAME', 'q2@HOST_NAME', 'q3@HOST_NAME', 'q4@HOST_NAME'],[1, 2, 3, 4]).
 </br>
+
 ### Video simulation
-you can watch a video simulation by clicking <a href="">here</a>.
+you can watch a video simulation by clicking <a href="https://youtu.be/mdYMzMV0BsE">here</a>.
 </br>
+
 ### Creator
 *Dan Gridish*  
 Computer Engineer, Ben-gurion University, Israel

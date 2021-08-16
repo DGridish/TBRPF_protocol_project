@@ -1,21 +1,15 @@
-erl -sname main -setcookie aaa
+erl -sname main -setcookie cookie
 
-erl -sname q1 -setcookie aaa
-erl -sname q2 -setcookie aaa
-erl -sname q3 -setcookie aaa
-erl -sname q4 -setcookie aaa
+erl -sname q1 -setcookie cookie
+erl -sname q2 -setcookie cookie
+erl -sname q3 -setcookie cookie
+erl -sname q4 -setcookie cookie
 
-cd("/home/dgridish/IdeaProjects/TBRPF_Protocol/src").
+
+cd("../TBRPF_Protocol/src").
 c(mainNode).
 c(qNode).
 c(elementNode).
 
 
-mainNode:start_link(['q1@dgridish', 'q2@dgridish', 'q3@dgridish', 'q4@dgridish'],[1, 2, 3, 4]).
-
-net_adm:ping('q2@dgridish').
-
-cd("/home/dgridish/IdeaProjects/TBRPF_Protocol/src").
-c(tests).
-tests:test([1]).
-
+mainNode:start_link(['q1@host_name', 'q2@host_name', 'q3@host_name', 'q4@host_name'],[1, 2, 3, 4]).
