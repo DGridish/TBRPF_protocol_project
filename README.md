@@ -87,7 +87,7 @@ mainNode:start_link(['q1@HOST_NAME', 'q2@HOST_NAME', 'q3@HOST_NAME', 'q4@HOST_NA
 </br>
 
 ### Video simulation
-you can watch a video simulation by clicking <a href="https://youtu.be/mdYMzMV0BsE">here</a>.
+you can watch a video simulation by clicking <a href="https://youtu.be/O22cv8rWUq8">here</a>.
 </br>
 
 ### Creator

@@ -52,17 +52,19 @@ start_link([ParentNode, Quarter, {NewLocation, Speed, Direction, Time}]) ->
   {ok, State :: #elementNode_state{}} | {ok, State :: #elementNode_state{}, timeout() | hibernate} |
   {stop, Reason :: term()} | ignore).
 init([ParentNode, Quarter, {NewLocation, NewSpeed, NewDirection, NewTime}]) ->
+  Time = erlang:timestamp(),
   ElementPid = self(),
   DiGraph = digraph:new(),
-  digraph:add_vertex(DiGraph, ElementPid),
-  if {NewLocation, NewSpeed, NewDirection, NewTime} == {0, 0, 0, 0} ->
-    [Location, Direction, Speed] = setSpeedAndDirection(Quarter),
-    gen_server:cast(ParentNode, {signMeUp, ElementPid, Location}),                                                      % Update the parent node on its existence
+  digraph:add_vertex(DiGraph, ElementPid),                                                                              % Add current element to his digraph
+
+  if {NewLocation, NewSpeed, NewDirection, NewTime} == {0, 0, 0, 0} ->                                                  % Init in a situation where it is a new element
+    [Location, Direction, Speed] = setSpeedAndDirection(Quarter),                                                       % Set movement
+    gen_server:cast(ParentNode, {signMeUp, ElementPid, Location, Time}),                                                % Update the parent node on its existence
   {ok, #elementNode_state{elementPid = ElementPid, parentPid = ParentNode, quarter = Quarter,
     location = Location, direction = Direction, speed = Speed, time = erlang:system_time(millisecond),
     neighbors = [], diGraph = DiGraph}};
 
-  true -> gen_server:cast(ParentNode, {signMeUp, ElementPid, NewLocation}),
+  true -> gen_server:cast(ParentNode, {signMeUp, ElementPid, NewLocation, Time}),                                       % Init in a situation where it is an element that has passed from another quarter
     {ok, #elementNode_state{elementPid = ElementPid, parentPid = ParentNode, quarter = Quarter,
     location = NewLocation, direction = NewDirection, speed = NewSpeed, time = NewTime, neighbors = [], diGraph = DiGraph}}
   end.
@@ -78,7 +80,7 @@ init([ParentNode, Quarter, {NewLocation, NewSpeed, NewDirection, NewTime}]) ->
   {noreply, NewState :: #elementNode_state{}, timeout() | hibernate} |
   {stop, Reason :: term(), Reply :: term(), NewState :: #elementNode_state{}} |
   {stop, Reason :: term(), NewState :: #elementNode_state{}}).
-handle_call({sendYourNeighborsList}, _From, State = #elementNode_state{}) ->
+handle_call({sendYourNeighborsList}, _From, State = #elementNode_state{}) ->                                            % Send a list of neighbors
   {reply, State#elementNode_state.neighbors, State};
 
 handle_call(_Request, _From, State = #elementNode_state{}) ->
@@ -91,17 +93,18 @@ handle_call(_Request, _From, State = #elementNode_state{}) ->
   {noreply, NewState :: #elementNode_state{}} |
   {noreply, NewState :: #elementNode_state{}, timeout() | hibernate} |
   {stop, Reason :: term(), NewState :: #elementNode_state{}}).
-handle_cast({makeMovement}, State = #elementNode_state{}) ->
+handle_cast({makeMovement}, State = #elementNode_state{}) ->                                                            % Make Movement
+  Time = erlang:timestamp(),
   OldQuarter = State#elementNode_state.quarter,
   OLdDirection = State#elementNode_state.direction,
-  [NewX, NewY, NewTime] = calcMovement(State),
+  [NewX, NewY, NewTime] = calcMovement(State),                                                                          % Calculate the new location
   NewLocation = {NewX, NewY},
-  NewQuarter = checkNewLocation(NewLocation),
+  NewQuarter = checkNewLocation(NewLocation),                                                                           % Check which quarter the new location is in
   case NewQuarter of
-    OldQuarter ->  gen_server:cast(State#elementNode_state.parentPid, {updateElement, self(), NewLocation}),
+    OldQuarter ->  gen_server:cast(State#elementNode_state.parentPid, {updateElement, self(), NewLocation}),            % Same quarter - just update movement
       {noreply, State#elementNode_state{location = NewLocation, time = NewTime}};
 
-    offTheMap -> % billiard table movement
+    offTheMap ->                                                                                                        % Off the map - calculate new direction - billiard table movement
       gen_server:cast(State#elementNode_state.parentPid, {updateElement, self(), NewLocation}),
       if
         (NewX < 200) and (NewY < 200) -> NewDirection = (180 + State#elementNode_state.direction) rem 360;
@@ -116,14 +119,14 @@ handle_cast({makeMovement}, State = #elementNode_state{}) ->
       end,
       {noreply, State#elementNode_state{location = NewLocation, direction = NewDirection, time = NewTime}};
 
-    NewQuarter ->
+    NewQuarter ->                                                                                                       % New quarter - move the element to the new quarter
       gen_server:cast(State#elementNode_state.parentPid, {moveToOtherQuarter, State#elementNode_state.elementPid, NewQuarter, NewLocation,
-        State#elementNode_state.speed, State#elementNode_state.direction, State#elementNode_state.time}),
+        State#elementNode_state.speed, State#elementNode_state.direction, State#elementNode_state.time, Time}),
       gen_server:cast(self(), {deleteElement}),
       {noreply, State#elementNode_state{quarter = NewQuarter, location = NewLocation, time = NewTime}}
   end;
 
-handle_cast({getNeighborsList}, State = #elementNode_state{}) ->
+handle_cast({getNeighborsList}, State = #elementNode_state{}) ->                                                        % Check from whom to request the list of neighbors, and ask the Q node to return the relevant elements to you
   try
     MyQPid = State#elementNode_state.parentPid,
     {X, Y} = State#elementNode_state.location,
@@ -160,12 +163,12 @@ handle_cast({getNeighborsList}, State = #elementNode_state{}) ->
       _:_  -> {noreply, State}
   end;
 
-handle_cast({takeElementList, [FullList]}, State = #elementNode_state{}) ->
+handle_cast({takeElementList, [FullList]}, State = #elementNode_state{}) ->                                             % Receiving the relevant elements
   MyLocation = State#elementNode_state.location,
-  AllInRadius = findElementsInRadius(FullList, MyLocation),
-{noreply, State#elementNode_state{neighbors = AllInRadius}};
+  AllInRadius = findElementsInRadius(FullList, MyLocation),                                                             % Check who is in the radius (who is my neighbor)
+{noreply, State#elementNode_state{neighbors = AllInRadius}};                                                            % Add to the list of neighbors
 
-handle_cast({sendMassage, ToElement, Data}, State = #elementNode_state{}) ->
+handle_cast({sendMassage, ToElement, Data}, State = #elementNode_state{}) ->                                            % Send a message to the target element with given Data
   MyPid = self(),
   try
     AlreadyVisitedList = State#elementNode_state.neighbors,
@@ -189,15 +192,15 @@ handle_cast({sendMassage, ToElement, Data}, State = #elementNode_state{}) ->
     _:_ -> {noreply, State}
   end;
 
-handle_cast({msgFromOtherElement, FromElement, ToElement, Path, Data}, State = #elementNode_state{}) ->
+handle_cast({msgFromOtherElement, FromElement, ToElement, Path, Data}, State = #elementNode_state{}) ->                 % Message from another element
   MyPid = self(),
   if
-    MyPid == ToElement -> io:format("Thanks ~p ! I got this data: ~p ~n", [FromElement, Data]);
-    true -> [H|T] = Path, gen_server:cast(H, {msgFromOtherElement, FromElement, ToElement, T, Data})
+    MyPid == ToElement -> io:format("Thanks ~p ! I got this data: ~p ~n", [FromElement, Data]);                         % If the message was addressed to me, say thank you
+    true -> [H|T] = Path, gen_server:cast(H, {msgFromOtherElement, FromElement, ToElement, T, Data})                    % Move the message along the path
   end,
   {noreply, State};
 
-handle_cast({deleteElement}, State = #elementNode_state{}) ->
+handle_cast({deleteElement}, State = #elementNode_state{}) ->                                                           % Deleting the element
   {stop, shutdown, State};
 
 handle_cast(_Request, State = #elementNode_state{}) ->

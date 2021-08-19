@@ -44,8 +44,8 @@ start_link(QNodes, QAreas, NUM_OF_ELEM, MainNode) ->
 init([QNodes, QAreas, NUM_OF_ELEM, MainNode]) ->
   ets:new(etsLocation, [set, public, named_table, {read_concurrency, true}, {write_concurrency, true}]),                % Create elements location table
   Quarter = findQNodeQuarter(QNodes, QAreas, node()),                                                                   % Find the quarter for which the node is responsible from QAreas list
-  gen_server:cast(MainNode, {addQ, node(), self(), Quarter}),
-  spawnElementNodes(NUM_OF_ELEM, Quarter),
+  gen_server:cast(MainNode, {addQ, node(), self(), Quarter}),                                                           % Add Q node to estQs table
+  spawnElementNodes(NUM_OF_ELEM, Quarter),                                                                              % Spawn all elements
   {ok, #qNode_state{mainNode = MainNode, quarter = Quarter}}.
 
 
@@ -74,43 +74,48 @@ handle_call(_Request, _From, State = #qNode_state{}) ->
   {noreply, NewState :: #qNode_state{}, timeout() | hibernate} |
   {stop, Reason :: term(), NewState :: #qNode_state{}}).
 
-handle_cast({signMeUp, ElementPid, Location}, State = #qNode_state{}) ->
+handle_cast({signMeUp, ElementPid, Location, Time}, State = #qNode_state{}) ->                                          % Write a new element in the relevant places
   QPid = self(),
   erlang:monitor(process, ElementPid),
   gen_server:cast(State#qNode_state.mainNode, {addElement, QPid, ElementPid, Location}),
   ets:insert(etsLocation, {ElementPid, Location}),
+  TimeEnd = erlang:timestamp(),
+  T = timer:now_diff(TimeEnd, Time),
+  io:format("The time it took between the initialization of the element and its registration in the etsLocation table: ~n ElementPid: ~p, Time: ~p ~n", [ElementPid, T]),
   {noreply, State};
 
-handle_cast({updateElement, Element, NewLocation}, State = #qNode_state{}) ->
+handle_cast({updateElement, Element, NewLocation}, State = #qNode_state{}) ->                                           % Update element in etsLocation table
   ets:delete(etsLocation, Element),
   ets:insert(etsLocation, {Element, NewLocation}),
   gen_server:cast(State#qNode_state.mainNode, {updateElement, self(), Element, NewLocation}),
   {noreply, State};
 
-handle_cast({deleteElement, Element}, State = #qNode_state{}) ->
+handle_cast({deleteElement, Element}, State = #qNode_state{}) ->                                                        % Delete element from etsLocation table
   ets:delete(etsLocation, Element),
   gen_server:cast(State#qNode_state.mainNode, {deleteElement, self(), Element}),
   {noreply, State};
 
-handle_cast({moveToOtherQuarter, ElementPid, NewQuarter, NewLocation, Speed, Direction, Time}, State = #qNode_state{}) ->
-  gen_server:cast(State#qNode_state.mainNode, {moveToOtherQuarter, self(), ElementPid, NewQuarter, NewLocation, Speed, Direction, Time}),
+handle_cast({moveToOtherQuarter, ElementPid, NewQuarter, NewLocation, Speed, Direction, Time, STime}, State = #qNode_state{}) -> % Move element to another quarter
+  gen_server:cast(State#qNode_state.mainNode, {moveToOtherQuarter, self(), ElementPid, NewQuarter, NewLocation, Speed, Direction, Time, STime}),
   ets:delete(etsLocation, ElementPid),
   NodeAndPid = gen_server:call(State#qNode_state.mainNode, {howAreThey, [NewQuarter]}),
   [{_QNode, QPid}] = NodeAndPid,
   gen_server:cast(QPid, {createElement, NewLocation, Speed, Direction, Time}),
-
+  TimeEnd = erlang:timestamp(),
+  T = timer:now_diff(TimeEnd, STime),
+  io:format("Q node - The time it took once the step was calculated to complete the transition to a new quarter: ~n ElementPid: ~p, Time: ~p ~n", [ElementPid, T]),
   {noreply, State};
 
-handle_cast({createElement, NewLocation, Speed, Direction, Time}, State = #qNode_state{}) ->
+handle_cast({createElement, NewLocation, Speed, Direction, Time}, State = #qNode_state{}) ->                            % Create a new element
   spawn(elementNode, start_link, [[self(), State#qNode_state.quarter, {NewLocation, Speed, Direction, Time}]]),
   {noreply, State};
 
-handle_cast({giveMeElementList, ElementPid, []}, State = #qNode_state{}) ->
+handle_cast({giveMeElementList, ElementPid, []}, State = #qNode_state{}) ->                                             % Request a list of elements from the relevant Q nodes
   FullList = [ets:tab2list(etsLocation)],
   gen_server:cast(ElementPid, {takeElementList, FullList}),
   {noreply, State};
 
-handle_cast({giveMeElementList, ElementPid, HowToAskList}, State = #qNode_state{}) ->
+handle_cast({giveMeElementList, ElementPid, HowToAskList}, State = #qNode_state{}) ->                                   % Request a list of elements from the relevant Q nodes
   MyQPid = self(),
   try
     NodeAndPidList = gen_server:call(State#qNode_state.mainNode, {howAreThey, HowToAskList}),

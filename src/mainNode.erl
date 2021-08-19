@@ -47,22 +47,16 @@ start_link(QNodes, QAreas) ->
 init([QNodes, QAreas]) ->
   TimeStart = erlang:timestamp(),
   MainNodePid = self(),
-  ets:new(etsQs,[set, public, named_table]),
+  ets:new(etsQs,[set, public, named_table]),                                                                            % Create Q node table
   ets:new(etsElements,[ordered_set, public, named_table]),                                                              % Create elements table
-
-
-  % TODO send massages between elements
-  %io:format("MainNodePid ~p ~n", [MainNodePid]),
-  spawn(fun()->sendMassagesRoutine(MainNodePid) end),
+  spawn(fun()->sendMassagesRoutine(MainNodePid) end),                                                                   % Send massages routine
+  spawnQNodes(QNodes, QAreas, ?NUM_OF_ELEMENTS, init),                                                                  % Spawn q nodes
+  spawn_link(fun() -> manageQNodes(QNodes, MainNodePid) end),                                                           % Monitor q nodes
+  spawn_link(fun()-> sendDataToGui(TimeStart) end),                                                                     % update gui routine
 
   % TODO spawn GUI
   % GuiPid = guiStateM:start_link([QNodes, node()]),
   % spawn_link(fun()-> sendDataToGui(GuiPid) end).
-  spawn_link(fun()-> sendDataToGui(TimeStart) end),
-  % TODO pass parameters to q node or use default in qNode? What parameters?
-
-  spawnQNodes(QNodes, QAreas, ?NUM_OF_ELEMENTS, init),                                                                  % Spawn q nodes
-  spawn_link(fun() -> manageQNodes(QNodes, MainNodePid) end),                                                           % Monitor q nodes
   {ok, #mainNode_state{qNodes = QNodes, qAreas = QAreas}}.
 
 
@@ -76,7 +70,7 @@ init([QNodes, QAreas]) ->
   {noreply, NewState :: #mainNode_state{}, timeout() | hibernate} |
   {stop, Reason :: term(), Reply :: term(), NewState :: #mainNode_state{}} |
   {stop, Reason :: term(), NewState :: #mainNode_state{}}).
-handle_call({howAreThey, QuarterNumbers}, _From, State = #mainNode_state{}) ->
+handle_call({howAreThey, QuarterNumbers}, _From, State = #mainNode_state{}) ->                                          % Make a match between a quarter number and an Q node pid
   Temp = [ets:match(etsQs,{Key,'$1'}) || Key <- QuarterNumbers],
   PidsList = flatten(Temp),
   {reply, PidsList, State};
@@ -92,31 +86,34 @@ handle_call(_Request, _From, State = #mainNode_state{}) ->
   {noreply, NewState :: #mainNode_state{}, timeout() | hibernate} |
   {stop, Reason :: term(), NewState :: #mainNode_state{}}).
 
-handle_cast({addQ, QNode, QPid, Quarter}, State = #mainNode_state{}) ->
+handle_cast({addQ, QNode, QPid, Quarter}, State = #mainNode_state{}) ->                                                 % Add Q node to estQs table
   ets:insert(etsQs, {Quarter, {QNode, QPid}}),
   {noreply, State};
 
-handle_cast({addElement, QPid, ElementPid, Location}, State = #mainNode_state{}) ->
-  ets:insert(etsElements, {{QPid, ElementPid}, Location}),   % etsElements: {[QPid, ElementPid],[X,Y]}  % {[<12526.105.0>,<12526.113.0>],[1916,114]
+handle_cast({addElement, QPid, ElementPid, Location}, State = #mainNode_state{}) ->                                     % Add element to estElements table
+  ets:insert(etsElements, {{QPid, ElementPid}, Location}),
   {noreply, State};
 
-handle_cast({deleteElement, QPid, ElementPid}, State = #mainNode_state{}) ->
-  ets:delete(etsElements, {QPid, ElementPid}),   % etsElements: {[QPid, ElementPid],[X,Y]}  % {[<12526.105.0>,<12526.113.0>],[1916,114]
+handle_cast({deleteElement, QPid, ElementPid}, State = #mainNode_state{}) ->                                            % Delete element from estElements table
+  ets:delete(etsElements, {QPid, ElementPid}),
   {noreply, State};
 
-handle_cast({updateElement, QPid, Element, NewLocation}, State = #mainNode_state{}) ->
+handle_cast({updateElement, QPid, Element, NewLocation}, State = #mainNode_state{}) ->                                  % Update element in estElements table
   ets:delete(etsElements, {QPid, Element}),
   ets:insert(etsElements, {{QPid, Element}, NewLocation}),
 {noreply, State};
 
-handle_cast({moveToOtherQuarter, QPid, ElementPid, NewQuarter, NewLocation, Speed, Direction, Time}, State = #mainNode_state{}) ->
+handle_cast({moveToOtherQuarter, QPid, ElementPid, NewQuarter, NewLocation, Speed, Direction, Time, STime}, State = #mainNode_state{}) -> % Move element to another quarter
   ets:delete(etsElements, {QPid, ElementPid}),
   QIndex = index_of(NewQuarter, State#mainNode_state.qAreas),
   NewQ = lists:nth(QIndex, State#mainNode_state.qNodes),
   gen_server:cast(NewQ, {createElement, NewLocation, Speed, Direction, Time}),
+  TimeEnd = erlang:timestamp(),
+  T = timer:now_diff(TimeEnd, STime),
+  io:format("Main node - The time it took once the step was calculated to complete the transition to a new quarter: ~n ElementPid: ~p, Time: ~p ~n", [ElementPid, T]),
 {noreply, State};
 
-handle_cast({sendMassage}, State = #mainNode_state{}) ->
+handle_cast({sendMassage}, State = #mainNode_state{}) ->                                                                % Select two elements from etsElements table and request to send a message with Data between them
   Data = rand:uniform(1000),
   From = ets:first(etsElements),
   To = ets:last(etsElements),
@@ -126,7 +123,7 @@ handle_cast({sendMassage}, State = #mainNode_state{}) ->
   io:format("MainNode sendMassage ~p ~n", [[FromQPid, FromElement, ToQPid, ToElement, Data]]),
 {noreply, State};
 
-handle_cast({qNodeDown, Node}, State = #mainNode_state{}) ->
+handle_cast({qNodeDown, Node}, State = #mainNode_state{}) ->                                                            % Handling of fallen Q nodes
   EtsQsList = ets:tab2list(etsQs),
   [QPid, QQuarterList] = howIsHe(Node, EtsQsList),
   [ets:delete(etsQs, QQuarter) || QQuarter <- QQuarterList],
@@ -142,7 +139,7 @@ handle_cast({qNodeDown, Node}, State = #mainNode_state{}) ->
   io:format("Q node ~p is down ~nQ node ~p will back him up ~n", [Node, QNode]),
 {noreply, State};
 
-handle_cast({allParameters, Parameters}, State = #mainNode_state{}) ->   % Parameters = {NumberOfElements, MaxSpeed, BroadcastRadius}
+handle_cast({allParameters, Parameters}, State = #mainNode_state{}) ->                                                  % Transfer parameters from the user
   EtsQsList = ets:tab2list(etsQs),
   [gen_server:cast(QPid, {allParameters, Parameters}) || {_Quarter, [_Node, QPid]} <- EtsQsList],
   {noreply, State};
@@ -266,9 +263,9 @@ sendDataToGui(TimeStart)->
 
       io:format("Send to GUI - etsQs: ~p ~n", [ets:tab2list(etsQs)]),
       io:format("Send to GUI - etsElements: ~p ~n", [ets:tab2list(etsElements)]),
-      %TimeEnd = erlang:timestamp(),
-      %Time = timer:now_diff(TimeEnd, TimeStart),
-      %io:format("Send to GUI - 200K elements!  time: ~p ~n", [Time]),
+      TimeEnd = erlang:timestamp(),
+      Time = timer:now_diff(TimeEnd, TimeStart),
+      io:format("Time : ~p ~n", [Time]),
       sendDataToGui(TimeStart)
     end
   catch
